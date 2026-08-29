@@ -1,0 +1,357 @@
+import {
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+} from '#src/common/errors/index.js';
+import { hashPassword, verifyPassword } from '#src/common/utils/crypto.util.js';
+import { buildPaginationMeta, resolvePagination } from '#src/common/utils/pagination.util.js';
+import { isEmojiOnly, maskBlockedWords, normalizeMessageText } from '#src/common/utils/text.util.js';
+import { emitToRoom } from '#src/realtime/emitter.js';
+import { SOCKET_EVENT } from '#src/realtime/events.js';
+import { MESSAGE_TYPE } from '#src/modules/chat/chat.constants.js';
+import { settingsService } from '#src/modules/settings/settings.service.js';
+import { roomRepository } from '#src/modules/rooms/room.repository.js';
+import { ROOM_ROLE, ROOM_STATUS } from '#src/modules/rooms/room.constants.js';
+
+function toParticipantDto(participant) {
+  const user = participant.userId;
+  const isPopulated = user && typeof user === 'object' && user.nickname;
+
+  return {
+    userId: String(isPopulated ? user._id : user),
+    nickname: isPopulated ? user.nickname : undefined,
+    avatarUrl: isPopulated ? (user.avatarUrl ?? null) : undefined,
+    gender: isPopulated ? user.gender : undefined,
+    role: participant.role,
+    isMuted: participant.isMuted,
+    isVoiceConnected: participant.isVoiceConnected,
+    joinedAt: participant.joinedAt,
+  };
+}
+
+function toRoomDto(room, viewerId) {
+  const host = room.hostId;
+  const isPopulatedHost = host && typeof host === 'object' && host.nickname;
+
+  return {
+    id: String(room._id),
+    name: room.name,
+    topic: room.topic ?? '',
+    host: {
+      id: String(isPopulatedHost ? host._id : host),
+      nickname: isPopulatedHost ? host.nickname : undefined,
+      avatarUrl: isPopulatedHost ? (host.avatarUrl ?? null) : undefined,
+      gender: isPopulatedHost ? host.gender : undefined,
+    },
+    isHost: viewerId ? String(isPopulatedHost ? host._id : host) === String(viewerId) : false,
+    isVoiceEnabled: room.isVoiceEnabled,
+    isPrivate: room.isPrivate,
+    status: room.status,
+    participantCount: room.participantCount ?? 0,
+    maxParticipants: room.maxParticipants,
+    participants: (room.participants ?? []).map(toParticipantDto),
+    isJoined: viewerId
+      ? (room.participants ?? []).some((participant) => {
+          const id = participant.userId?._id ?? participant.userId;
+          return String(id) === String(viewerId);
+        })
+      : false,
+    messageCount: room.messageCount ?? 0,
+    lastActivityAt: room.lastActivityAt,
+    createdAt: room.createdAt,
+  };
+}
+
+function toRoomMessageDto(message) {
+  const sender = message.senderId;
+  const isPopulated = sender && typeof sender === 'object' && sender.nickname;
+
+  return {
+    id: String(message._id),
+    roomId: String(message.roomId),
+    sender: {
+      id: String(isPopulated ? sender._id : sender),
+      nickname: isPopulated ? sender.nickname : undefined,
+      avatarUrl: isPopulated ? (sender.avatarUrl ?? null) : undefined,
+      gender: isPopulated ? sender.gender : undefined,
+    },
+    type: message.type,
+    text: message.text,
+    createdAt: message.createdAt,
+  };
+}
+
+async function assertRoomsEnabled() {
+  const settings = await settingsService.getSettings();
+  if (!settings.rooms.enabled) {
+    throw new ForbiddenError('Rooms are currently unavailable', 'ROOMS_DISABLED');
+  }
+  return settings.rooms;
+}
+
+async function loadLiveRoom(roomId) {
+  const room = await roomRepository.findById(roomId);
+  if (!room) throw new NotFoundError('Room not found', 'ROOM_NOT_FOUND');
+  if (room.status !== ROOM_STATUS.LIVE) throw new ForbiddenError('This room has ended', 'ROOM_CLOSED');
+  return room;
+}
+
+function isParticipant(room, userId) {
+  return (room.participants ?? []).some((participant) => {
+    const id = participant.userId?._id ?? participant.userId;
+    return String(id) === String(userId);
+  });
+}
+
+export async function createRoom({ user, name, topic, isVoiceEnabled, isPrivate, passcode, maxParticipants }) {
+  const roomSettings = await assertRoomsEnabled();
+
+  const existing = await roomRepository.findRoomsContainingUser(user.id);
+  const alreadyHosting = existing.some((room) => String(room.hostId) === String(user.id));
+  if (alreadyHosting) {
+    throw new ConflictError('You already have a live room. Close it before opening another.', 'ROOM_ALREADY_HOSTED');
+  }
+
+  if (isPrivate && !passcode) {
+    throw new BadRequestError('Set a passcode for a private room', 'PASSCODE_REQUIRED');
+  }
+
+  const capacity = Math.min(maxParticipants ?? roomSettings.maxParticipants, roomSettings.maxParticipants);
+
+  const room = await roomRepository.create({
+    name,
+    topic: topic ?? '',
+    hostId: user.id,
+    isVoiceEnabled: roomSettings.voiceEnabled && isVoiceEnabled !== false,
+    isPrivate: Boolean(isPrivate),
+    passcodeHash: isPrivate ? await hashPassword(passcode) : null,
+    maxParticipants: capacity,
+    // The host is seated immediately, unmuted, so the room is never empty.
+    participants: [{ userId: user.id, role: ROOM_ROLE.HOST, isMuted: false, joinedAt: new Date() }],
+    participantCount: 1,
+  });
+
+  const populated = await roomRepository.findPopulatedById(room._id);
+  return toRoomDto(populated, user.id);
+}
+
+export async function listRooms({ userId, page, limit, search }) {
+  await assertRoomsEnabled();
+  const { skip, page: safePage, limit: safeLimit } = resolvePagination({ page, limit });
+
+  const { items, total } = await roomRepository.listLive({ skip, limit: safeLimit, search });
+
+  return {
+    items: items.map((room) => toRoomDto(room, userId)),
+    meta: buildPaginationMeta({ page: safePage, limit: safeLimit, total }),
+  };
+}
+
+export async function getRoom({ userId, roomId }) {
+  const room = await roomRepository.findPopulatedById(roomId);
+  if (!room) throw new NotFoundError('Room not found', 'ROOM_NOT_FOUND');
+  return toRoomDto(room, userId);
+}
+
+export async function joinRoom({ user, roomId, passcode }) {
+  await assertRoomsEnabled();
+
+  const room = await roomRepository.findById(roomId, { includePasscode: true });
+  if (!room) throw new NotFoundError('Room not found', 'ROOM_NOT_FOUND');
+  if (room.status !== ROOM_STATUS.LIVE) throw new ForbiddenError('This room has ended', 'ROOM_CLOSED');
+
+  if (isParticipant(room, user.id)) {
+    const populated = await roomRepository.findPopulatedById(roomId);
+    return { room: toRoomDto(populated, user.id), alreadyJoined: true };
+  }
+
+  if (room.isPrivate) {
+    if (!passcode) throw new UnauthorizedError('This room needs a passcode', 'PASSCODE_REQUIRED');
+    if (!(await verifyPassword(passcode, room.passcodeHash))) {
+      throw new UnauthorizedError('That passcode is incorrect', 'PASSCODE_INVALID');
+    }
+  }
+
+  const updated = await roomRepository.addParticipant({
+    roomId,
+    userId: user.id,
+    capacity: room.maxParticipants,
+  });
+
+  if (!updated) throw new ConflictError('This room is full', 'ROOM_FULL');
+
+  const populated = await roomRepository.findPopulatedById(roomId);
+  const dto = toRoomDto(populated, user.id);
+
+  emitToRoom(roomId, SOCKET_EVENT.ROOM_PARTICIPANTS, {
+    roomId: String(roomId),
+    participants: dto.participants,
+    participantCount: dto.participantCount,
+  });
+
+  return { room: dto, alreadyJoined: false };
+}
+
+/**
+ * Leaving as the host ends the room for everyone — a leaderless voice room has
+ * no way to moderate itself.
+ */
+export async function leaveRoom({ user, roomId }) {
+  const room = await roomRepository.findById(roomId);
+  if (!room) return { left: true };
+
+  const isHost = String(room.hostId) === String(user.id);
+
+  if (isHost) {
+    await roomRepository.close(roomId);
+    emitToRoom(roomId, SOCKET_EVENT.ROOM_CLOSED, { roomId: String(roomId), reason: 'HOST_LEFT' });
+    return { left: true, roomClosed: true };
+  }
+
+  const updated = await roomRepository.removeParticipant({ roomId, userId: user.id });
+  if (updated) {
+    const populated = await roomRepository.findPopulatedById(roomId);
+    const dto = toRoomDto(populated, user.id);
+    emitToRoom(roomId, SOCKET_EVENT.ROOM_PARTICIPANTS, {
+      roomId: String(roomId),
+      participants: dto.participants,
+      participantCount: dto.participantCount,
+    });
+  }
+
+  return { left: true, roomClosed: false };
+}
+
+export async function closeRoom({ user, roomId }) {
+  const room = await loadLiveRoom(roomId);
+
+  if (String(room.hostId) !== String(user.id)) {
+    throw new ForbiddenError('Only the host can close this room', 'NOT_ROOM_HOST');
+  }
+
+  await roomRepository.close(roomId);
+  emitToRoom(roomId, SOCKET_EVENT.ROOM_CLOSED, { roomId: String(roomId), reason: 'HOST_CLOSED' });
+
+  return { closed: true };
+}
+
+export async function sendRoomMessage({ user, roomId, text }) {
+  const room = await loadLiveRoom(roomId);
+
+  if (!isParticipant(room, user.id)) {
+    throw new ForbiddenError('Join the room before sending a message', 'NOT_IN_ROOM');
+  }
+
+  const settings = await settingsService.getSettings();
+  const normalized = normalizeMessageText(text);
+  if (!normalized) throw new BadRequestError('Write something first', 'EMPTY_MESSAGE');
+
+  const finalText = settings.moderation.profanityFilterEnabled
+    ? maskBlockedWords(normalized, settings.moderation.blockedWords).text
+    : normalized;
+
+  // Rooms are free by product decision — no billing call on this path.
+  const created = await roomRepository.createMessage({
+    roomId,
+    senderId: user.id,
+    type: isEmojiOnly(finalText) ? MESSAGE_TYPE.EMOJI : MESSAGE_TYPE.TEXT,
+    text: finalText,
+  });
+
+  const dto = toRoomMessageDto({
+    ...created.toObject(),
+    senderId: { _id: user.id, nickname: user.nickname, avatarUrl: user.avatarUrl, gender: user.gender },
+  });
+
+  emitToRoom(roomId, SOCKET_EVENT.ROOM_MESSAGE_NEW, dto);
+  return dto;
+}
+
+export async function listRoomMessages({ user, roomId, limit, before }) {
+  const room = await loadLiveRoom(roomId);
+
+  if (!isParticipant(room, user.id)) {
+    throw new ForbiddenError('Join the room to read the chat', 'NOT_IN_ROOM');
+  }
+
+  const result = await roomRepository.listMessages({
+    roomId,
+    limit: Math.min(Number(limit) || 50, 100),
+    before,
+  });
+
+  return { items: result.items.map(toRoomMessageDto), meta: { hasMore: result.hasMore, nextCursor: result.nextCursor } };
+}
+
+export async function setVoiceState({ user, roomId, isMuted, isVoiceConnected }) {
+  const room = await loadLiveRoom(roomId);
+
+  if (!isParticipant(room, user.id)) {
+    throw new ForbiddenError('Join the room first', 'NOT_IN_ROOM');
+  }
+
+  const patch = {};
+  if (isMuted !== undefined) patch.isMuted = isMuted;
+  if (isVoiceConnected !== undefined) patch.isVoiceConnected = isVoiceConnected;
+
+  await roomRepository.updateParticipantState({ roomId, userId: user.id, patch });
+
+  const payload = { roomId: String(roomId), userId: String(user.id), ...patch };
+  emitToRoom(roomId, SOCKET_EVENT.ROOM_VOICE_STATE, payload);
+
+  return payload;
+}
+
+/** Host moderation: remove someone and let their client tear down its peers. */
+export async function kickParticipant({ user, roomId, targetUserId }) {
+  const room = await loadLiveRoom(roomId);
+
+  if (String(room.hostId) !== String(user.id)) {
+    throw new ForbiddenError('Only the host can remove someone', 'NOT_ROOM_HOST');
+  }
+
+  if (String(targetUserId) === String(user.id)) {
+    throw new BadRequestError('Close the room instead of removing yourself', 'CANNOT_KICK_HOST');
+  }
+
+  await roomRepository.removeParticipant({ roomId, userId: targetUserId });
+
+  const populated = await roomRepository.findPopulatedById(roomId);
+  const dto = toRoomDto(populated, user.id);
+
+  emitToRoom(roomId, SOCKET_EVENT.ROOM_PARTICIPANTS, {
+    roomId: String(roomId),
+    participants: dto.participants,
+    participantCount: dto.participantCount,
+    removedUserId: String(targetUserId),
+  });
+
+  return { removed: true };
+}
+
+/** Called on socket disconnect so a dropped phone does not leave a ghost seat. */
+export async function handleUserDisconnected(userId) {
+  const rooms = await roomRepository.findRoomsContainingUser(userId);
+
+  for (const room of rooms) {
+    await leaveRoom({ user: { id: userId }, roomId: room._id });
+  }
+
+  return rooms.length;
+}
+
+export const roomService = {
+  createRoom,
+  listRooms,
+  getRoom,
+  joinRoom,
+  leaveRoom,
+  closeRoom,
+  sendRoomMessage,
+  listRoomMessages,
+  setVoiceState,
+  kickParticipant,
+  handleUserDisconnected,
+};

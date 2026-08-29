@@ -1,0 +1,66 @@
+/** There is exactly one settings document; this is its stable key. */
+export const SETTINGS_SINGLETON_KEY = 'default';
+
+/**
+ * Defaults match the launch business rules. Everything here is editable from
+ * the admin panel at runtime — code must never hard-code these numbers again.
+ */
+export const DEFAULT_SETTINGS = Object.freeze({
+  coins: {
+    /** One-off free chat allowance for paying accounts, in minutes. */
+    freeTalkMinutes: 30,
+    /** Messages granted per charge once the free allowance is exhausted. */
+    messagesPerBlock: 7,
+    /** Coins deducted to unlock one block of messages. */
+    coinsPerBlock: 10,
+    /** Recurring top-up for paying accounts. */
+    dailyBonusCoins: 25,
+    dailyBonusIntervalHours: 24,
+    /** Coins credited once, at signup. */
+    signupBonusCoins: 0,
+    /** Genders billed for messaging. Everyone else chats free. */
+    chargedGenders: ['male'],
+  },
+  chat: {
+    maxMessageLength: 1000,
+    /** Text auto-sent when a paying user opens a brand new conversation. */
+    autoGreetingText: 'Hi',
+    autoGreetingEnabled: true,
+    /** Seconds of free allowance consumed per heartbeat tick. */
+    heartbeatIntervalSeconds: 15,
+    typingIndicatorEnabled: true,
+  },
+  games: {
+    enabled: true,
+    leaderboardSize: 50,
+    /** Guard against a client replaying a high score endlessly. */
+    maxSessionsPerDay: 50,
+    coinsPerPointConversion: 0,
+  },
+  rooms: {
+    enabled: true,
+    maxParticipants: 12,
+    voiceEnabled: true,
+    /** Rooms are free by product decision; kept configurable for later. */
+    entryCoinCost: 0,
+  },
+  discovery: {
+    defaultRadiusKm: 50,
+    maxRadiusKm: 500,
+    showDistance: true,
+  },
+  payments: {
+    currency: 'INR',
+    razorpayEnabled: true,
+    manualUpiEnabled: true,
+    upiId: '',
+    upiPayeeName: '',
+    /** Data URI or hosted URL of the static UPI QR shown in the app. */
+    upiQrImageUrl: '',
+    supportEmail: 'support@vibechat.app',
+  },
+  moderation: {
+    profanityFilterEnabled: true,
+    blockedWords: [],
+  },
+});
