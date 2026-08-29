@@ -54,8 +54,17 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
 
+    /**
+     * A real photo, once the user uploads one. Null until then — the generated
+     * emoji below is what shows in the meantime, so this staying null is a
+     * normal state rather than an incomplete profile.
+     */
     avatarUrl: { type: String, default: null },
     avatarStorageKey: { type: String, default: null, select: false },
+
+    /** Assigned at signup from a gendered set. Never null for a new account. */
+    avatarEmoji: { type: String, default: null },
+    avatarColor: { type: String, default: null },
     bio: { type: String, trim: true, maxlength: 240, default: '' },
     interests: { type: [String], default: [] },
 

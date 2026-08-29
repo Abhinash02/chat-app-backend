@@ -9,7 +9,7 @@ function requestContextOf(req) {
 
 export const authController = {
   register: asyncHandler(async (req, res) => {
-    const result = await authService.register(req.body);
+    const result = await authService.register({ ...req.body, ...requestContextOf(req) });
     return sendCreated(res, result);
   }),
 

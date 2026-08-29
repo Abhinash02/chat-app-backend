@@ -56,7 +56,7 @@ class ChatRepository {
         .sort({ lastMessageAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('participantIds', 'nickname name avatarUrl gender isOnline lastSeenAt')
+        .populate('participantIds', 'nickname name avatarUrl avatarEmoji avatarColor gender isOnline lastSeenAt')
         .lean()
         .exec(),
       ConversationModel.countDocuments(filter).exec(),

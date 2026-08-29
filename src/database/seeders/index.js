@@ -5,6 +5,7 @@ import { campaignService } from '#src/modules/notifications/campaign.service.js'
 import { themeService } from '#src/modules/theme/theme.service.js';
 import { seedAdminUser } from '#src/database/seeders/admin.seeder.js';
 import { seedCoinPackages } from '#src/database/seeders/coin-package.seeder.js';
+import { backfillAvatars } from '#src/database/seeders/avatar.seeder.js';
 
 /**
  * Brings an empty database up to a usable state: settings row, theme presets,
@@ -16,6 +17,7 @@ export async function runSeeders() {
   await campaignService.ensureSystemTemplatesSeeded();
   await seedCoinPackages();
   await seedAdminUser();
+  await backfillAvatars();
 }
 
 const isDirectRun = process.argv[1]?.endsWith('seeders/index.js');

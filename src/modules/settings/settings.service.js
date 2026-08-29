@@ -63,6 +63,7 @@ export async function getPublicSettings() {
       autoGreetingEnabled: settings.chat.autoGreetingEnabled,
       heartbeatIntervalSeconds: settings.chat.heartbeatIntervalSeconds,
       typingIndicatorEnabled: settings.chat.typingIndicatorEnabled,
+      requireVerifiedEmail: settings.chat.requireVerifiedEmail,
     },
     games: { enabled: settings.games.enabled, leaderboardSize: settings.games.leaderboardSize },
     rooms: {

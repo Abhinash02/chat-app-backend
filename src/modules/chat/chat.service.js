@@ -60,6 +60,8 @@ function toConversationDto(conversation, viewerId) {
           name: other.name,
           nickname: other.nickname,
           avatarUrl: other.avatarUrl ?? null,
+          avatarEmoji: other.avatarEmoji ?? null,
+          avatarColor: other.avatarColor ?? null,
           gender: other.gender,
           isOnline: Boolean(other.isOnline),
           lastSeenAt: other.lastSeenAt ?? null,

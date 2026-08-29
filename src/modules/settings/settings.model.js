@@ -32,6 +32,7 @@ const chatSchema = new mongoose.Schema(
       default: DEFAULT_SETTINGS.chat.heartbeatIntervalSeconds,
     },
     typingIndicatorEnabled: { type: Boolean, default: DEFAULT_SETTINGS.chat.typingIndicatorEnabled },
+    requireVerifiedEmail: { type: Boolean, default: DEFAULT_SETTINGS.chat.requireVerifiedEmail },
   },
   { _id: false },
 );

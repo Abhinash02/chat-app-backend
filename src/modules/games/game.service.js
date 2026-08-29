@@ -172,6 +172,8 @@ export async function getLeaderboard({ userId, limit }) {
     userId: String(entry._id),
     nickname: entry.nickname,
     avatarUrl: entry.avatarUrl ?? null,
+    avatarEmoji: entry.avatarEmoji ?? null,
+    avatarColor: entry.avatarColor ?? null,
     gender: entry.gender,
     totalPoints: entry.gamePoints,
     isMe: String(entry._id) === String(userId),

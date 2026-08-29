@@ -29,6 +29,14 @@ export const DEFAULT_SETTINGS = Object.freeze({
     /** Seconds of free allowance consumed per heartbeat tick. */
     heartbeatIntervalSeconds: 15,
     typingIndicatorEnabled: true,
+    /**
+     * Whether an unverified account may browse and chat.
+     *
+     * Off by default so signup goes straight into the app. Turn it on if
+     * throwaway accounts become a problem — verification still happens either
+     * way, this only decides whether it blocks anything.
+     */
+    requireVerifiedEmail: false,
   },
   games: {
     enabled: true,

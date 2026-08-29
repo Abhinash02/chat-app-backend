@@ -52,17 +52,67 @@ describe('authentication flow', () => {
   });
 
   describe('registration', () => {
-    it('should create an unverified account and require an emailed code', async () => {
+    it('should sign the user in immediately, while still asking them to verify', async () => {
       const response = await request(app)
         .post(`${API}/auth/register`)
         .send(validRegistration)
         .expect(201);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data.verification.required).toBe(true);
+
+      // Signup lands in the app rather than on a "check your inbox" wall.
+      expect(response.body.data.tokens.accessToken).toBeTruthy();
+      expect(response.body.data.tokens.refreshToken).toBeTruthy();
+
+      // The code is still sent, and the account is still unverified.
       expect(response.body.data.user.status).toBe(USER_STATUS.PENDING_VERIFICATION);
-      // No session is issued until the email is proven.
-      expect(response.body.data.tokens).toBeUndefined();
+      expect(response.body.data.verification).toMatchObject({ required: true, pending: true });
+    });
+
+    it('should let a brand new account use that session straight away', async () => {
+      const registered = await request(app)
+        .post(`${API}/auth/register`)
+        .send(validRegistration)
+        .expect(201);
+
+      const response = await request(app)
+        .get(`${API}/auth/me`)
+        .set('Authorization', `Bearer ${registered.body.data.tokens.accessToken}`)
+        .expect(200);
+
+      expect(response.body.data.email).toBe(validRegistration.email);
+    });
+
+    it('should give every new account an avatar without a photo', async () => {
+      const response = await request(app)
+        .post(`${API}/auth/register`)
+        .send(validRegistration)
+        .expect(201);
+
+      const { user } = response.body.data;
+
+      // A generated emoji stands in until the user uploads a real photo, so
+      // nobody ever appears as a blank silhouette.
+      expect(user.avatarEmoji).toBeTruthy();
+      expect(user.avatarColor).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      expect(user.avatarUrl).toBeNull();
+    });
+
+    it('should pick the avatar from a set matching the account gender', async () => {
+      const { AVATAR_EMOJI_BY_GENDER } = await import('#src/modules/users/avatar.constants.js');
+
+      const boy = await request(app)
+        .post(`${API}/auth/register`)
+        .send({ ...validRegistration, email: 'boy@example.com', nickname: 'boy1' })
+        .expect(201);
+
+      const girl = await request(app)
+        .post(`${API}/auth/register`)
+        .send({ ...validRegistration, email: 'girl@example.com', nickname: 'girl1', gender: GENDER.FEMALE })
+        .expect(201);
+
+      expect(AVATAR_EMOJI_BY_GENDER.male).toContain(boy.body.data.user.avatarEmoji);
+      expect(AVATAR_EMOJI_BY_GENDER.female).toContain(girl.body.data.user.avatarEmoji);
     });
 
     it('should never return the password hash', async () => {

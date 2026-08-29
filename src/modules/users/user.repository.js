@@ -4,7 +4,7 @@ import { USER_STATUS } from '#src/common/constants/index.js';
 import { UserModel } from '#src/modules/users/user.model.js';
 
 const PUBLIC_FIELDS =
-  'name nickname gender avatarUrl bio interests isOnline lastSeenAt gamePoints location.city location.country createdAt';
+  'name nickname gender avatarUrl avatarEmoji avatarColor bio interests isOnline lastSeenAt gamePoints location.city location.country createdAt';
 
 class UserRepository {
   async create(data, { session } = {}) {
@@ -132,6 +132,8 @@ class UserRepository {
                 nickname: 1,
                 gender: 1,
                 avatarUrl: 1,
+                avatarEmoji: 1,
+                avatarColor: 1,
                 bio: 1,
                 interests: 1,
                 isOnline: 1,
@@ -241,7 +243,7 @@ class UserRepository {
 
   async findTopByGamePoints(limit) {
     return UserModel.find({ status: USER_STATUS.ACTIVE, gamePoints: { $gt: 0 } })
-      .select('nickname avatarUrl gender gamePoints')
+      .select('nickname avatarUrl avatarEmoji avatarColor gender gamePoints')
       .sort({ gamePoints: -1, updatedAt: 1 })
       .limit(limit)
       .lean()

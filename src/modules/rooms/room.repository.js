@@ -26,8 +26,8 @@ class RoomRepository {
         .sort({ participantCount: -1, lastActivityAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('hostId', 'nickname avatarUrl gender')
-        .populate('participants.userId', 'nickname avatarUrl gender')
+        .populate('hostId', 'nickname avatarUrl avatarEmoji avatarColor gender')
+        .populate('participants.userId', 'nickname avatarUrl avatarEmoji avatarColor gender')
         .lean()
         .exec(),
       RoomModel.countDocuments(filter).exec(),
@@ -38,8 +38,8 @@ class RoomRepository {
 
   async findPopulatedById(roomId) {
     return RoomModel.findById(roomId)
-      .populate('hostId', 'nickname avatarUrl gender')
-      .populate('participants.userId', 'nickname avatarUrl gender isOnline')
+      .populate('hostId', 'nickname avatarUrl avatarEmoji avatarColor gender')
+      .populate('participants.userId', 'nickname avatarUrl avatarEmoji avatarColor gender isOnline')
       .lean()
       .exec();
   }
@@ -147,7 +147,7 @@ class RoomRepository {
     const items = await RoomMessageModel.find(filter)
       .sort({ createdAt: -1 })
       .limit(limit + 1)
-      .populate('senderId', 'nickname avatarUrl gender')
+      .populate('senderId', 'nickname avatarUrl avatarEmoji avatarColor gender')
       .lean()
       .exec();
 

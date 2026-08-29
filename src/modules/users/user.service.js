@@ -23,6 +23,8 @@ function toPublicProfile(user, { showDistance = false } = {}) {
     nickname: user.nickname,
     gender: user.gender,
     avatarUrl: user.avatarUrl ?? null,
+    avatarEmoji: user.avatarEmoji ?? null,
+    avatarColor: user.avatarColor ?? null,
     bio: user.bio ?? '',
     interests: user.interests ?? [],
     isOnline: Boolean(user.isOnline),
@@ -44,6 +46,10 @@ function toOwnProfile(user) {
     role: user.role,
     status: user.status,
     avatarUrl: user.avatarUrl ?? null,
+    avatarEmoji: user.avatarEmoji ?? null,
+    avatarColor: user.avatarColor ?? null,
+    /** True once a real photo replaces the generated emoji. */
+    hasPhoto: Boolean(user.avatarUrl),
     bio: user.bio ?? '',
     interests: user.interests ?? [],
     preferences: user.preferences,
@@ -123,7 +129,9 @@ export async function removeAvatar(userId) {
   const storage = getStorageProvider();
   const current = await UserModel.findById(userId).select('+avatarStorageKey').lean().exec();
 
-  await userRepository.updateById(userId, { $set: { avatarUrl: null, avatarStorageKey: null } });
+  const updated = await userRepository.updateById(userId, {
+    $set: { avatarUrl: null, avatarStorageKey: null },
+  });
 
   if (current?.avatarStorageKey) {
     storage
@@ -131,7 +139,13 @@ export async function removeAvatar(userId) {
       .catch((error) => logger.warn({ err: error }, 'Failed to remove avatar'));
   }
 
-  return { avatarUrl: null };
+  // Deleting a photo reveals the generated emoji again rather than leaving the
+  // profile blank, so there is no state where a user has no avatar at all.
+  return {
+    avatarUrl: null,
+    avatarEmoji: updated?.avatarEmoji ?? null,
+    avatarColor: updated?.avatarColor ?? null,
+  };
 }
 
 export async function updateLocation({ userId, latitude, longitude, city, country }) {

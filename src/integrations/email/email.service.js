@@ -27,8 +27,13 @@ function getTransporter() {
 /**
  * Delivery never blocks the caller's business outcome: a failed send is logged
  * and reported, but registration still succeeds and the user can request a
- * resend. In development with no SMTP configured the code is written to the log
- * so the whole flow stays testable offline.
+ * resend.
+ *
+ * Outside production the code is written to the log whenever it could not be
+ * delivered — whether SMTP is unconfigured *or* the provider rejected it. That
+ * second case matters: a half-configured provider used to leave a developer
+ * with no code and no way to finish signing up, which looks like the app is
+ * broken when the real problem is an unverified sender address.
  */
 async function send({ to, subject, text, html, context = {} }) {
   const mailer = getTransporter();
@@ -50,7 +55,19 @@ async function send({ to, subject, text, html, context = {} }) {
     logger.info({ to, messageId: info.messageId }, 'Email sent');
     return { delivered: true, messageId: info.messageId };
   } catch (error) {
-    logger.error({ err: error, to, subject }, 'Failed to send email');
+    // The provider's own words are what identifies the problem — an unverified
+    // sender, a bad key, a throttle — so they are logged verbatim.
+    logger.error(
+      {
+        to,
+        subject,
+        smtpCode: error.responseCode,
+        smtpResponse: error.response,
+        ...(env.isProduction ? {} : context),
+      },
+      'Failed to send email',
+    );
+
     return { delivered: false, reason: 'SEND_FAILED' };
   }
 }

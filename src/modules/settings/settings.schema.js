@@ -23,6 +23,7 @@ export const updateSettingsSchema = z
         autoGreetingEnabled: z.boolean().optional(),
         heartbeatIntervalSeconds: z.number().int().min(5).max(120).optional(),
         typingIndicatorEnabled: z.boolean().optional(),
+        requireVerifiedEmail: z.boolean().optional(),
       })
       .strict()
       .optional(),

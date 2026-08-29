@@ -24,6 +24,7 @@ import { coinsService } from '#src/modules/coins/coins.service.js';
 import { settingsService } from '#src/modules/settings/settings.service.js';
 import { themeService } from '#src/modules/theme/theme.service.js';
 import { userRepository } from '#src/modules/users/user.repository.js';
+import { generateAvatar } from '#src/modules/users/avatar.constants.js';
 import { authRepository } from '#src/modules/auth/auth.repository.js';
 import {
   OTP_LENGTH,
@@ -48,6 +49,8 @@ function toAuthUser(user) {
     role: user.role,
     status: user.status,
     avatarUrl: user.avatarUrl ?? null,
+    avatarEmoji: user.avatarEmoji ?? null,
+    avatarColor: user.avatarColor ?? null,
     bio: user.bio ?? '',
     isEmailVerified: Boolean(user.emailVerifiedAt),
     createdAt: user.createdAt,
@@ -155,7 +158,17 @@ async function consumeOtp({ userId, purpose, code }) {
   return true;
 }
 
-export async function register({ name, nickname, email, password, gender }) {
+/**
+ * Creates the account and signs the user straight in.
+ *
+ * A session is issued before the email is verified, so signup lands on the app
+ * rather than on a "check your inbox" wall. The code is still sent and the
+ * account stays `pending_verification` until it is used — what that status
+ * blocks is an admin decision (`chat.requireVerifiedEmail`), not a hard-coded
+ * one. The trade is deliberate: fewer people abandon signup, at the cost of
+ * throwaway accounts being cheaper to create.
+ */
+export async function register({ name, nickname, email, password, gender, userAgent, ipAddress }) {
   if (await userRepository.existsByEmail(email)) {
     throw new ConflictError('An account with this email already exists', 'EMAIL_TAKEN');
   }
@@ -163,6 +176,9 @@ export async function register({ name, nickname, email, password, gender }) {
   if (await userRepository.existsByNickname(nickname)) {
     throw new ConflictError('That nickname is taken, try another', 'NICKNAME_TAKEN');
   }
+
+  // Everyone gets a face immediately; a real photo is an optional upgrade.
+  const avatar = generateAvatar(gender);
 
   const user = await userRepository.create({
     name,
@@ -172,16 +188,27 @@ export async function register({ name, nickname, email, password, gender }) {
     passwordHash: await hashPassword(password),
     role: USER_ROLE.USER,
     status: USER_STATUS.PENDING_VERIFICATION,
+    avatarEmoji: avatar.emoji,
+    avatarColor: avatar.color,
   });
 
   await coinsService.ensureWallet({ userId: user._id, gender: user.gender });
-  const otp = await issueOtp({ user, purpose: OTP_PURPOSE.EMAIL_VERIFICATION });
+
+  // A failed send must not fail the signup — the user is already inside and can
+  // ask for another code from the banner.
+  const otp = await issueOtp({ user, purpose: OTP_PURPOSE.EMAIL_VERIFICATION }).catch((error) => {
+    logger.warn({ err: error, userId: String(user._id) }, 'Verification email failed at signup');
+    return { delivered: false, expiresInMinutes: OTP_TTL_MINUTES };
+  });
+
+  const tokens = await issueSession({ user, userAgent, ipAddress });
 
   logger.info({ userId: String(user._id), gender }, 'User registered');
 
   return {
     user: toAuthUser(user),
-    verification: { required: true, email: user.email, ...otp },
+    tokens,
+    verification: { required: true, pending: true, email: user.email, ...otp },
   };
 }
 
