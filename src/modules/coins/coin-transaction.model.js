@@ -9,7 +9,7 @@ import { COIN_TRANSACTION_DIRECTION, COIN_TRANSACTION_TYPE } from '#src/modules/
  */
 const coinTransactionSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     type: { type: String, enum: Object.values(COIN_TRANSACTION_TYPE), required: true, index: true },
     direction: { type: String, enum: Object.values(COIN_TRANSACTION_DIRECTION), required: true },
 

@@ -19,7 +19,7 @@ const coinPackageSchema = new mongoose.Schema(
 
     badge: { type: String, trim: true, maxlength: 24, default: '' },
     isPopular: { type: Boolean, default: false },
-    isActive: { type: Boolean, default: true, index: true },
+    isActive: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },
   },
   { timestamps: true },

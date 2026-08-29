@@ -27,7 +27,7 @@ const roomSchema = new mongoose.Schema(
     /** Only ever a digest; the clear-text passcode is never stored. */
     passcodeHash: { type: String, default: null, select: false },
 
-    status: { type: String, enum: Object.values(ROOM_STATUS), default: ROOM_STATUS.LIVE, index: true },
+    status: { type: String, enum: Object.values(ROOM_STATUS), default: ROOM_STATUS.LIVE },
     closedAt: { type: Date, default: null },
 
     /** Denormalised for the room list, which must not count an array per row. */

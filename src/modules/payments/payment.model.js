@@ -15,7 +15,7 @@ const manualProofSchema = new mongoose.Schema(
 
 const paymentOrderSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     packageId: { type: mongoose.Schema.Types.ObjectId, ref: 'CoinPackage', required: true },
 
     /**
@@ -33,7 +33,6 @@ const paymentOrderSchema = new mongoose.Schema(
       type: String,
       enum: Object.values(PAYMENT_STATUS),
       default: PAYMENT_STATUS.CREATED,
-      index: true,
     },
 
     providerOrderId: { type: String, default: null, index: true },

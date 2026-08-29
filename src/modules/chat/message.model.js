@@ -17,9 +17,8 @@ const messageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Conversation',
       required: true,
-      index: true,
     },
-    senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     recipientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
     type: { type: String, enum: Object.values(MESSAGE_TYPE), default: MESSAGE_TYPE.TEXT },
@@ -37,7 +36,18 @@ const messageSchema = new mongoose.Schema(
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
-// The chat history query: newest first within one conversation.
+/**
+ * Two indexes, deliberately.
+ *
+ * `{conversationId, createdAt}` serves the history query and also any lookup
+ * by conversationId alone, because a compound index answers queries on its
+ * leading fields — a separate single-field index on conversationId would be
+ * pure duplication.
+ *
+ * There is intentionally no index on `senderId`: nothing filters by it, and on
+ * the largest collection in the database an unused index costs storage on
+ * every document and a write on every insert.
+ */
 messageSchema.index({ conversationId: 1, createdAt: -1 });
 messageSchema.index({ recipientId: 1, readAt: 1 });
 

@@ -4,7 +4,7 @@ import { GAME_KEYS, GAME_SESSION_STATUS } from '#src/modules/games/game.constant
 
 const gameSessionSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     gameKey: { type: String, enum: GAME_KEYS, required: true },
 
     status: {

@@ -4,7 +4,7 @@ import { REPORT_REASON, REPORT_STATUS } from '#src/modules/reports/report.consta
 
 const reportSchema = new mongoose.Schema(
   {
-    reporterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    reporterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     reportedUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     conversationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', default: null },
 
@@ -29,7 +29,7 @@ const reportSchema = new mongoose.Schema(
       default: [],
     },
 
-    status: { type: String, enum: Object.values(REPORT_STATUS), default: REPORT_STATUS.OPEN, index: true },
+    status: { type: String, enum: Object.values(REPORT_STATUS), default: REPORT_STATUS.OPEN },
     reviewedByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     reviewNote: { type: String, maxlength: 500, default: '' },
     reviewedAt: { type: Date, default: null },

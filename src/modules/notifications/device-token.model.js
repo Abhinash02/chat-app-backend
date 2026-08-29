@@ -8,7 +8,7 @@ import { DEVICE_PLATFORM } from '#src/modules/notifications/notification.constan
  */
 const deviceTokenSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     token: { type: String, required: true, unique: true },
     platform: { type: String, enum: Object.values(DEVICE_PLATFORM), required: true },
 

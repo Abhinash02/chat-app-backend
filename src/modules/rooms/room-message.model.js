@@ -4,7 +4,7 @@ import { MESSAGE_TYPE } from '#src/modules/chat/chat.constants.js';
 
 const roomMessageSchema = new mongoose.Schema(
   {
-    roomId: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true, index: true },
+    roomId: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true },
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     type: { type: String, enum: Object.values(MESSAGE_TYPE), default: MESSAGE_TYPE.TEXT },
     text: { type: String, required: true, maxlength: 2000 },

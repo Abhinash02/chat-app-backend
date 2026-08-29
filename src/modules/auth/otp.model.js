@@ -8,7 +8,7 @@ import { OTP_PURPOSE } from '#src/modules/auth/auth.constants.js';
  */
 const otpSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     email: { type: String, required: true, lowercase: true, trim: true },
     purpose: { type: String, enum: Object.values(OTP_PURPOSE), required: true },
     codeHash: { type: String, required: true },

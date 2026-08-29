@@ -67,7 +67,6 @@ const campaignSchema = new mongoose.Schema(
       type: String,
       enum: Object.values(CAMPAIGN_STATUS),
       default: CAMPAIGN_STATUS.DRAFT,
-      index: true,
     },
 
     stats: { type: statsSchema, default: () => ({}) },
