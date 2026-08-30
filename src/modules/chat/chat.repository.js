@@ -126,8 +126,18 @@ class ChatRepository {
    * Cursor pagination: `before` is the createdAt of the oldest message the
    * client already holds, which keeps paging stable while new messages arrive.
    */
-  async listMessages({ conversationId, limit = 30, before }) {
-    const filter = { conversationId, isDeleted: false };
+  async listMessages({ conversationId, limit = 30, before, viewerId }) {
+    /*
+     * Withdrawn messages stay in the list as tombstones rather than vanishing.
+     * Removing them outright made the "this was deleted" note disappear on the
+     * next reload, so a conversation quietly rewrote itself and the other
+     * person was left wondering what they had misread.
+     *
+     * Messages someone deleted for themselves are a different matter: those
+     * are filtered out for that reader only, and stay whole for the other.
+     */
+    const filter = { conversationId };
+    if (viewerId) filter.deletedFor = { $ne: viewerId };
     if (before) filter.createdAt = { $lt: new Date(before) };
 
     const items = await MessageModel.find(filter)
@@ -167,10 +177,47 @@ class ChatRepository {
     return MessageModel.findById(messageId).lean().exec();
   }
 
+  /** Hides a message from one reader, leaving the other person's copy intact. */
+  async hideMessageFor({ messageId, userId }) {
+    return MessageModel.findByIdAndUpdate(
+      messageId,
+      { $addToSet: { deletedFor: userId } },
+      { new: true },
+    )
+      .lean()
+      .exec();
+  }
+
+  /**
+   * Adds or replaces one person's reaction.
+   *
+   * Two updates rather than one: an array filter cannot both replace an
+   * existing entry and push a missing one, and doing it in this order means a
+   * repeat tap of the same emoji ends with none — which is what makes the
+   * button a toggle instead of a ratchet.
+   */
+  async setReaction({ messageId, userId, emoji }) {
+    await MessageModel.updateOne({ _id: messageId }, { $pull: { reactions: { userId } } }).exec();
+
+    if (!emoji) {
+      return MessageModel.findById(messageId).lean().exec();
+    }
+
+    return MessageModel.findByIdAndUpdate(
+      messageId,
+      { $push: { reactions: { userId, emoji, reactedAt: new Date() } } },
+      { new: true },
+    )
+      .lean()
+      .exec();
+  }
+
   async softDeleteMessage(messageId) {
     return MessageModel.findByIdAndUpdate(
       messageId,
-      { $set: { isDeleted: true, deletedAt: new Date(), text: '' } },
+      // The text goes with it. Keeping it would leave "deleted for everyone"
+      // true only of the interface.
+      { $set: { isDeleted: true, deletedAt: new Date(), text: '', reactions: [] } },
       { new: true },
     )
       .lean()

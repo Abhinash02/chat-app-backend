@@ -4,10 +4,12 @@ import { authenticate, requireVerifiedAccount, validate } from '#src/common/midd
 import { chatController } from '#src/modules/chat/chat.controller.js';
 import {
   conversationIdParamSchema,
+  deleteMessageSchema,
   listConversationsSchema,
   listMessagesSchema,
   messageIdParamSchema,
   openConversationSchema,
+  reactToMessageSchema,
   sendMessageSchema,
 } from '#src/modules/chat/chat.schema.js';
 
@@ -52,10 +54,16 @@ router.post(
   validate({ params: conversationIdParamSchema }),
   chatController.closeConversation,
 );
+/** `scope` rides in the query: DELETE bodies are dropped by some proxies. */
 router.delete(
   '/messages/:messageId',
-  validate({ params: messageIdParamSchema }),
+  validate({ params: messageIdParamSchema, query: deleteMessageSchema }),
   chatController.deleteMessage,
+);
+router.post(
+  '/messages/:messageId/reactions',
+  validate({ params: messageIdParamSchema, body: reactToMessageSchema }),
+  chatController.reactToMessage,
 );
 
 export const chatRoutes = router;

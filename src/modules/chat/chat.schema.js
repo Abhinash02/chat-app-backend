@@ -1,7 +1,11 @@
 import { z } from 'zod';
 
 import { objectIdSchema, paginationSchema } from '#src/common/validators/common.schema.js';
-import { CLIENT_MESSAGE_TYPES } from '#src/modules/chat/chat.constants.js';
+import {
+  CLIENT_MESSAGE_TYPES,
+  DELETE_SCOPE,
+  QUICK_REACTIONS,
+} from '#src/modules/chat/chat.constants.js';
 
 export const openConversationSchema = z.object({ userId: objectIdSchema }).strict();
 
@@ -30,3 +34,23 @@ export const listMessagesSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
   before: z.coerce.date().optional(),
 });
+
+/**
+ * Which copy of the message to remove.
+ *
+ * Defaults to "me": a delete that guesses wrongly in the other direction
+ * reaches into someone else's conversation, so the safer reading wins when a
+ * client says nothing.
+ */
+export const deleteMessageSchema = z
+  .object({
+    scope: z.enum([DELETE_SCOPE.ME, DELETE_SCOPE.EVERYONE]).optional().default(DELETE_SCOPE.ME),
+  })
+  .strict();
+
+export const reactToMessageSchema = z
+  .object({
+    emoji: z.enum(QUICK_REACTIONS),
+  })
+  .strict();
+

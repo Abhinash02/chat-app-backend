@@ -17,13 +17,48 @@ import { userRepository } from '#src/modules/users/user.repository.js';
 import { chatRepository } from '#src/modules/chat/chat.repository.js';
 import {
   CONVERSATION_STATUS,
+  DELETE_SCOPE,
   MESSAGE_TYPE,
   CLIENT_MESSAGE_TYPES,
 } from '#src/modules/chat/chat.constants.js';
 
 const PREVIEW_LENGTH = 80;
 
-function toMessageDto(message) {
+/**
+ * Collapses reactions into what a bubble actually draws.
+ *
+ * The full list is not sent: a client needs the tally, and whether this
+ * reader is in it, to render the chip and colour it. Shipping every reactor's
+ * id would hand out the participants of a private conversation for nothing.
+ */
+function toReactionSummary(reactions, viewerId) {
+  const counts = new Map();
+
+  for (const reaction of reactions ?? []) {
+    const entry = counts.get(reaction.emoji) ?? { emoji: reaction.emoji, count: 0, mine: false };
+    entry.count += 1;
+    if (viewerId && String(reaction.userId) === String(viewerId)) entry.mine = true;
+    counts.set(reaction.emoji, entry);
+  }
+
+  return [...counts.values()].sort((a, b) => b.count - a.count);
+}
+
+/**
+ * One word for where a message has got to, so the client is not left deriving
+ * it from two nullable timestamps and getting it subtly wrong in one place.
+ *
+ *   sent       written down, the other device has not acknowledged it
+ *   delivered  it reached them
+ *   read       they opened it
+ */
+function deliveryStateOf(message) {
+  if (message.readAt) return 'read';
+  if (message.deliveredAt) return 'delivered';
+  return 'sent';
+}
+
+function toMessageDto(message, viewerId) {
   return {
     id: String(message._id),
     conversationId: String(message.conversationId),
@@ -34,6 +69,8 @@ function toMessageDto(message) {
     isDeleted: Boolean(message.isDeleted),
     deliveredAt: message.deliveredAt ?? null,
     readAt: message.readAt ?? null,
+    deliveryState: deliveryStateOf(message),
+    reactions: message.isDeleted ? [] : toReactionSummary(message.reactions, viewerId),
     createdAt: message.createdAt,
   };
 }
@@ -233,6 +270,20 @@ export async function sendMessage({ user, conversationId, text, type, isAutoGree
     recipientId,
   });
 
+  /*
+   * If they are connected, the message reaches their device now — so it is
+   * delivered now. Waiting for them to open the thread meant a message could
+   * sit on someone's phone, visible in their notification shade, still showing
+   * a single tick to the sender.
+   */
+  const recipientUser = await userRepository.findById(recipientId);
+  const isRecipientConnected = Boolean(recipientUser?.isOnline);
+
+  if (isRecipientConnected) {
+    await chatRepository.markDelivered({ conversationId: conversation._id, recipientId });
+    created.deliveredAt = new Date();
+  }
+
   const dto = toMessageDto(created);
 
   emitToConversation(conversation._id, SOCKET_EVENT.MESSAGE_NEW, dto);
@@ -242,8 +293,7 @@ export async function sendMessage({ user, conversationId, text, type, isAutoGree
 
   // Push only reaches people who are not currently connected. Someone with the
   // app open already saw the socket event; notifying them twice is noise.
-  const recipient = await userRepository.findById(recipientId);
-  if (recipient && !recipient.isOnline) {
+  if (recipientUser && !isRecipientConnected) {
     notificationService
       .sendToUser({
         userId: recipientId,
@@ -298,13 +348,14 @@ export async function listMessages({ userId, conversationId, limit, before }) {
     conversationId,
     limit: Math.min(Number(limit) || 30, 100),
     before,
+    viewerId: userId,
   });
 
   // Opening the history is an implicit delivery receipt for the other side.
   await chatRepository.markDelivered({ conversationId, recipientId: userId });
 
   return {
-    items: items.map(toMessageDto),
+    items: items.map((message) => toMessageDto(message, userId)),
     meta: { hasMore, nextCursor },
   };
 }
@@ -332,23 +383,96 @@ export async function markConversationRead({ userId, conversationId }) {
   return { readCount: modifiedCount, readAt };
 }
 
-export async function deleteMessage({ userId, messageId }) {
+/**
+ * Removes a message, for one person or for both.
+ *
+ * These are genuinely different acts and only one of them needs permission.
+ * Hiding a message from your own view touches nobody else, so either
+ * participant may do it to anything in the conversation. Withdrawing it from
+ * the other person's phone is a claim over their copy, so only the sender can.
+ */
+export async function deleteMessage({ userId, messageId, scope = DELETE_SCOPE.EVERYONE }) {
   const message = await chatRepository.findMessageById(messageId);
   if (!message) throw new NotFoundError('Message not found', 'MESSAGE_NOT_FOUND');
 
+  const isParticipant =
+    String(message.senderId) === String(userId) || String(message.recipientId) === String(userId);
+
+  if (!isParticipant) {
+    throw new ForbiddenError('This is not your conversation', 'NOT_CONVERSATION_PARTICIPANT');
+  }
+
+  if (scope === DELETE_SCOPE.ME) {
+    await chatRepository.hideMessageFor({ messageId, userId });
+
+    /*
+     * Only the person who asked is told. Announcing it to the conversation
+     * would leak that you cleared a message from your side — the whole point
+     * of "delete for me" is that the other person cannot tell.
+     */
+    return { deleted: true, scope: DELETE_SCOPE.ME };
+  }
+
   if (String(message.senderId) !== String(userId)) {
-    throw new ForbiddenError('You can only delete your own messages', 'NOT_MESSAGE_OWNER');
+    throw new ForbiddenError(
+      'You can only delete your own messages for everyone',
+      'NOT_MESSAGE_OWNER',
+    );
   }
 
   const deleted = await chatRepository.softDeleteMessage(messageId);
+  const dto = { ...toMessageDto(deleted), isDeleted: true };
 
-  emitToConversation(message.conversationId, SOCKET_EVENT.MESSAGE_NEW, {
-    ...toMessageDto(deleted),
-    isDeleted: true,
-  });
+  emitToConversation(message.conversationId, SOCKET_EVENT.MESSAGE_DELETED, dto);
+  // The recipient may not have the conversation open; their list needs it too.
+  emitToUser(message.recipientId, SOCKET_EVENT.MESSAGE_DELETED, dto);
 
   // Coins are not refunded: the message was delivered before it was withdrawn.
-  return { deleted: true };
+  return { deleted: true, scope: DELETE_SCOPE.EVERYONE };
+}
+
+/**
+ * Adds, swaps or clears one person's reaction.
+ *
+ * Sending the emoji already on the message clears it, so the same tap that
+ * added a like removes it — a separate "unreact" call would be a second thing
+ * to get wrong for no gain.
+ */
+export async function reactToMessage({ userId, messageId, emoji }) {
+  const message = await chatRepository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found', 'MESSAGE_NOT_FOUND');
+
+  if (message.isDeleted) {
+    throw new BadRequestError('That message was deleted', 'MESSAGE_DELETED');
+  }
+
+  const isParticipant =
+    String(message.senderId) === String(userId) || String(message.recipientId) === String(userId);
+
+  if (!isParticipant) {
+    throw new ForbiddenError('This is not your conversation', 'NOT_CONVERSATION_PARTICIPANT');
+  }
+
+  const existing = (message.reactions ?? []).find(
+    (reaction) => String(reaction.userId) === String(userId),
+  );
+
+  const nextEmoji = existing?.emoji === emoji ? null : emoji;
+  const updated = await chatRepository.setReaction({ messageId, userId, emoji: nextEmoji });
+
+  /*
+   * Each side is told separately because the payload differs: `mine` is true
+   * only for whoever actually reacted, and a shared broadcast would light up
+   * the other person's chip as if they had tapped it themselves.
+   */
+  emitToUser(message.senderId, SOCKET_EVENT.MESSAGE_REACTION, toMessageDto(updated, message.senderId));
+  emitToUser(
+    message.recipientId,
+    SOCKET_EVENT.MESSAGE_REACTION,
+    toMessageDto(updated, message.recipientId),
+  );
+
+  return toMessageDto(updated, userId);
 }
 
 export async function getTotalUnreadCount(userId) {
@@ -373,6 +497,7 @@ export const chatService = {
   listMessages,
   markConversationRead,
   deleteMessage,
+  reactToMessage,
   getTotalUnreadCount,
   closeConversation,
   loadParticipantConversation,

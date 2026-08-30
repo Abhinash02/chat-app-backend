@@ -19,6 +19,26 @@ export const MEDIA_MESSAGE_TYPES = Object.freeze([
 /** Messages a client is allowed to originate. Media is intentionally excluded. */
 export const CLIENT_MESSAGE_TYPES = Object.freeze([MESSAGE_TYPE.TEXT, MESSAGE_TYPE.EMOJI]);
 
+/**
+ * Who a deletion applies to.
+ *
+ * Two different acts sharing one verb: hiding a message from your own view
+ * needs no permission, withdrawing it from someone else's phone belongs to
+ * whoever wrote it.
+ */
+export const DELETE_SCOPE = Object.freeze({
+  ME: 'me',
+  EVERYONE: 'everyone',
+});
+
+/**
+ * The reactions a bubble offers on a long press.
+ *
+ * A short row rather than a full picker: reacting is meant to be one tap, and
+ * anything longer is better said in a message.
+ */
+export const QUICK_REACTIONS = Object.freeze(['❤️', '😂', '😮', '😢', '👍', '🙏']);
+
 export const CONVERSATION_STATUS = Object.freeze({
   ACTIVE: 'active',
   BLOCKED: 'blocked',

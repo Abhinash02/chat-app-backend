@@ -30,8 +30,45 @@ const messageSchema = new mongoose.Schema(
     /** What this message cost the sender — kept for support and analytics. */
     billing: { type: billingSchema, default: () => ({}) },
 
+    /**
+     * Withdrawn for everyone. The text is cleared on the way out, so a
+     * deleted message cannot be recovered by reading the database — anything
+     * less would make "delete for everyone" a promise the storage breaks.
+     */
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
+
+    /**
+     * Hidden from these people only.
+     *
+     * "Delete for me" is a per-reader view, not a change to the message: the
+     * other person keeps their copy, and the text stays intact because they
+     * are still entitled to read it. Two entries at most — a conversation has
+     * two participants — so an array on the message costs less than a join.
+     */
+    deletedFor: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: [] },
+
+    /**
+     * Reactions, one per person per message.
+     *
+     * Stored with the message rather than counted separately so a tap shows
+     * the same result to both sides without a second query, and uniqueness is
+     * enforced by userId in the update filter rather than by hoping clients
+     * behave.
+     */
+    reactions: {
+      type: [
+        new mongoose.Schema(
+          {
+            userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+            emoji: { type: String, required: true, maxlength: 8 },
+            reactedAt: { type: Date, default: Date.now },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );

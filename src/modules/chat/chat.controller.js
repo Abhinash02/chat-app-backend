@@ -65,8 +65,18 @@ export const chatController = {
     const result = await chatService.deleteMessage({
       userId: req.user.id,
       messageId: req.params.messageId,
+      scope: req.query.scope,
     });
     return sendSuccess(res, result);
+  }),
+
+  reactToMessage: asyncHandler(async (req, res) => {
+    const message = await chatService.reactToMessage({
+      userId: req.user.id,
+      messageId: req.params.messageId,
+      emoji: req.body.emoji,
+    });
+    return sendSuccess(res, message);
   }),
 
   getUnreadCount: asyncHandler(async (req, res) => {
