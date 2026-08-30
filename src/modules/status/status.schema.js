@@ -16,13 +16,18 @@ export const postTextStatusSchema = z
  * Multipart sends everything as strings and omits empty fields entirely, so
  * the caption is optional and coerced rather than required — a photo posted
  * with no caption is the common case, not an error.
+ *
+ * Deliberately not `.strict()`, unlike the JSON schemas. A multipart form is
+ * assembled by the platform as much as by us, and an extra text part is a
+ * client quirk rather than an attack — rejecting the whole upload over one
+ * produces "Please correct the highlighted fields" pointing at a field the
+ * person never filled in. Unknown keys are dropped instead, and the file
+ * itself is validated by multer and the service, which is where it matters.
  */
-export const postMediaStatusSchema = z
-  .object({
-    caption: z.string().trim().max(280).optional().default(''),
-    background: z.enum(TEXT_BACKGROUND_IDS).optional(),
-  })
-  .strict();
+export const postMediaStatusSchema = z.object({
+  caption: z.string().trim().max(280).optional().default(''),
+  background: z.enum(TEXT_BACKGROUND_IDS).optional(),
+});
 
 export const statusIdParamSchema = z.object({ statusId: objectIdSchema });
 

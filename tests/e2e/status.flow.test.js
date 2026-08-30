@@ -29,6 +29,9 @@ describe('status over HTTP', () => {
       provider: 'local',
       resourceType: 'image',
       durationSeconds: null,
+      // A landscape photo: wider than tall, and not a square.
+      width: 1080,
+      height: 720,
     });
   });
 
@@ -82,6 +85,83 @@ describe('status over HTTP', () => {
       .expect(201);
 
     expect(response.body.data.text).toBe('');
+  });
+
+  /**
+   * Portrait, landscape or square — a status is whatever shape the camera
+   * produced, and the real proportions have to survive the round trip so the
+   * viewer can lay the image out before it loads.
+   */
+  it('should keep the real proportions of a landscape photo', async () => {
+    const girl = await createUser({ gender: GENDER.FEMALE });
+
+    const response = await request(app)
+      .post(`${API}/status/media`)
+      .set(authHeaderFor(girl))
+      .attach('file', JPEG_BYTES, { filename: 'wide.jpg', contentType: 'image/jpeg' })
+      .expect(201);
+
+    expect(response.body.data.media.width).toBe(1080);
+    expect(response.body.data.media.height).toBe(720);
+  });
+
+  it('should keep the real proportions of a portrait photo', async () => {
+    const girl = await createUser({ gender: GENDER.FEMALE });
+
+    localStorageProvider.upload.mockResolvedValueOnce({
+      url: 'https://cdn.example/tall.jpg',
+      key: 'stored-key',
+      provider: 'local',
+      resourceType: 'image',
+      durationSeconds: null,
+      width: 720,
+      height: 1080,
+    });
+
+    const response = await request(app)
+      .post(`${API}/status/media`)
+      .set(authHeaderFor(girl))
+      .attach('file', JPEG_BYTES, { filename: 'tall.jpg', contentType: 'image/jpeg' })
+      .expect(201);
+
+    expect(response.body.data.media.height).toBeGreaterThan(response.body.data.media.width);
+  });
+
+  /**
+   * A multipart form is assembled by the platform as much as by us, so an
+   * extra text part is a client quirk, not an attack. Rejecting the upload
+   * over one produced a validation error naming a field nobody filled in.
+   */
+  it('should ignore an extra text field rather than failing the upload', async () => {
+    const girl = await createUser({ gender: GENDER.FEMALE });
+
+    const response = await request(app)
+      .post(`${API}/status/media`)
+      .set(authHeaderFor(girl))
+      .field('caption', 'Nice one')
+      .field('somethingTheClientAdded', 'noise')
+      .attach('file', JPEG_BYTES, { filename: 'photo.jpg', contentType: 'image/jpeg' })
+      .expect(201);
+
+    expect(response.body.data.text).toBe('Nice one');
+  });
+
+  /**
+   * What the web client was actually sending: the file object stringified into
+   * a text part, so multer saw no upload at all. The reply has to name the
+   * missing file rather than complain about a form field.
+   */
+  it('should say the file is missing when no file part was sent', async () => {
+    const girl = await createUser({ gender: GENDER.FEMALE });
+
+    const response = await request(app)
+      .post(`${API}/status/media`)
+      .set(authHeaderFor(girl))
+      .field('file', '[object Object]')
+      .field('caption', 'Sunny out')
+      .expect(400);
+
+    expect(response.body.error.code).toBe('FILE_REQUIRED');
   });
 
   it('should reject a status posted without a session', async () => {

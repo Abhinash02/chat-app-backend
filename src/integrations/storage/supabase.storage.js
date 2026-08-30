@@ -66,7 +66,21 @@ export const supabaseStorageProvider = {
     }
 
     const { data } = bucket.getPublicUrl(key);
-    return { url: data.publicUrl, key, provider: 'supabase' };
+
+    /*
+     * Supabase storage is a plain object store: it never decodes what it
+     * holds, so there is no duration or size to report. The nulls are
+     * deliberate rather than missing — a caller must not read "no dimensions"
+     * as "square".
+     */
+    return {
+      url: data.publicUrl,
+      key,
+      provider: 'supabase',
+      durationSeconds: null,
+      width: null,
+      height: null,
+    };
   },
 
   async remove(key) {

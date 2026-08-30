@@ -372,6 +372,8 @@ export async function sendRoomMedia({ user, roomId, file, caption = '' }) {
       mimeType: file.mimetype,
       durationSeconds: uploaded.durationSeconds ?? null,
       sizeBytes: file.size ?? null,
+      width: uploaded.width ?? null,
+      height: uploaded.height ?? null,
     },
   });
 

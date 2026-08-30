@@ -222,6 +222,8 @@ export async function postMediaStatus({ user, file, caption, background }) {
       resourceType: uploaded.resourceType ?? null,
       mimeType: file.mimetype,
       durationSeconds: duration,
+      width: uploaded.width ?? null,
+      height: uploaded.height ?? null,
     },
   });
 

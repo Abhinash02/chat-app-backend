@@ -74,6 +74,15 @@ export const cloudinaryStorageProvider = {
       durationSeconds: result.duration ? Math.round(result.duration) : null,
       // Needed at deletion time: a video cannot be destroyed as an image.
       resourceType,
+      /*
+       * The stored dimensions, after the resize above. `crop: 'limit'` scales
+       * to fit inside the box without cropping, so a portrait stays portrait
+       * and a landscape stays landscape — these are the real proportions, not
+       * a square. Clients use them to reserve the right shape before the image
+       * has loaded.
+       */
+      width: result.width ?? null,
+      height: result.height ?? null,
     };
   },
 
