@@ -7,7 +7,38 @@ const roomMessageSchema = new mongoose.Schema(
     roomId: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true },
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     type: { type: String, enum: Object.values(MESSAGE_TYPE), default: MESSAGE_TYPE.TEXT },
-    text: { type: String, required: true, maxlength: 2000 },
+
+    /**
+     * Empty for a voice note or a silent video, which is why this is no longer
+     * required. A caption on an image lives here too.
+     */
+    text: { type: String, default: '', maxlength: 2000 },
+
+    /**
+     * Set for image, voice and video messages.
+     *
+     * `storageKey` and `resourceType` exist so the file can actually be deleted
+     * later — Cloudinary needs both, and without them a removed message leaves
+     * its media behind forever.
+     */
+    media: {
+      type: new mongoose.Schema(
+        {
+          url: { type: String, required: true },
+          storageKey: { type: String, default: null },
+          resourceType: { type: String, default: null },
+          mimeType: { type: String, default: null },
+          /** Voice and video only. Reported by the provider, not the client. */
+          durationSeconds: { type: Number, default: null, min: 0 },
+          sizeBytes: { type: Number, default: null, min: 0 },
+          width: { type: Number, default: null },
+          height: { type: Number, default: null },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
+
     isDeleted: { type: Boolean, default: false },
   },
   { timestamps: { createdAt: true, updatedAt: false } },

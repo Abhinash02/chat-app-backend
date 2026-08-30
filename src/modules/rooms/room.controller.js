@@ -46,6 +46,16 @@ export const roomController = {
     return sendCreated(res, message);
   }),
 
+  sendMedia: asyncHandler(async (req, res) => {
+    const message = await roomService.sendRoomMedia({
+      user: req.user,
+      roomId: req.params.roomId,
+      file: req.file,
+      caption: req.body?.caption ?? '',
+    });
+    return sendCreated(res, message);
+  }),
+
   listMessages: asyncHandler(async (req, res) => {
     const { items, meta } = await roomService.listRoomMessages({
       user: req.user,

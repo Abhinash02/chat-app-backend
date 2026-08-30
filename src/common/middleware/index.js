@@ -9,4 +9,10 @@ export {
   paymentRateLimiter,
 } from '#src/common/middleware/rate-limit.middleware.js';
 export { requestContext } from '#src/common/middleware/request-context.middleware.js';
-export { uploadImage } from '#src/common/middleware/upload.middleware.js';
+export {
+  uploadImage,
+  uploadAudio,
+  uploadVideo,
+  uploadMedia,
+  mediaKindOf,
+} from '#src/common/middleware/upload.middleware.js';

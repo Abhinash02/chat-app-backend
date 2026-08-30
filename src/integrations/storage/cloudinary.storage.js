@@ -33,15 +33,28 @@ export const cloudinaryStorageProvider = {
 
     const publicId = `${fileName}-${crypto.randomBytes(8).toString('hex')}`;
 
+    /*
+     * Cloudinary calls both audio and video "video", which is not a typo —
+     * they share one pipeline there. Getting this wrong stores an m4a as an
+     * image and it comes back unplayable.
+     */
+    const isImage = mimeType.startsWith('image/');
+    const resourceType = isImage ? 'image' : 'video';
+
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
           folder: `${env.CLOUDINARY_FOLDER}/${folder}`,
           public_id: publicId,
-          resource_type: 'image',
+          resource_type: resourceType,
           overwrite: false,
-          // Cloudinary does the resizing so the app never downloads a 5MB avatar.
-          transformation: [{ width: 800, height: 800, crop: 'limit', quality: 'auto:good' }],
+          // Only images are resized here. Re-encoding audio would cost quality
+          // for no gain, and video transformation is a paid feature.
+          ...(isImage
+            ? {
+                transformation: [{ width: 1080, height: 1080, crop: 'limit', quality: 'auto:good' }],
+              }
+            : {}),
         },
         (error, uploadResult) => (error ? reject(error) : resolve(uploadResult)),
       );
@@ -52,15 +65,24 @@ export const cloudinaryStorageProvider = {
       throw new Error(`Cloudinary upload failed: ${error.message}`);
     });
 
-    return { url: result.secure_url, key: result.public_id, provider: 'cloudinary' };
+    return {
+      url: result.secure_url,
+      key: result.public_id,
+      provider: 'cloudinary',
+      // Cloudinary reports the real duration, so the client does not have to
+      // be trusted about how long a voice note is.
+      durationSeconds: result.duration ? Math.round(result.duration) : null,
+      // Needed at deletion time: a video cannot be destroyed as an image.
+      resourceType,
+    };
   },
 
-  async remove(key) {
+  async remove(key, { resourceType = 'image' } = {}) {
     if (!key) return false;
     configure();
 
     try {
-      await cloudinary.uploader.destroy(key, { resource_type: 'image' });
+      await cloudinary.uploader.destroy(key, { resource_type: resourceType });
       return true;
     } catch (error) {
       logger.warn({ err: error, key }, 'Cloudinary delete failed');

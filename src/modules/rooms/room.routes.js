@@ -1,6 +1,11 @@
 import { Router } from 'express';
 
-import { authenticate, requireVerifiedAccount, validate } from '#src/common/middleware/index.js';
+import {
+  authenticate,
+  requireVerifiedAccount,
+  uploadMedia,
+  validate,
+} from '#src/common/middleware/index.js';
 import { roomController } from '#src/modules/rooms/room.controller.js';
 import {
   createRoomSchema,
@@ -36,6 +41,16 @@ router.post(
   '/:roomId/messages',
   validate({ params: roomIdParamSchema, body: sendRoomMessageSchema }),
   roomController.sendMessage,
+);
+/**
+ * Multipart, so multer runs before validation — `req.body` does not exist
+ * until the form has been parsed.
+ */
+router.post(
+  '/:roomId/media',
+  uploadMedia.single('file'),
+  validate({ params: roomIdParamSchema }),
+  roomController.sendMedia,
 );
 router.patch(
   '/:roomId/voice',

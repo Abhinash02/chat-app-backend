@@ -11,6 +11,8 @@ import { isEmojiOnly, maskBlockedWords, normalizeMessageText } from '#src/common
 import { emitToRoom } from '#src/realtime/emitter.js';
 import { SOCKET_EVENT } from '#src/realtime/events.js';
 import { MESSAGE_TYPE } from '#src/modules/chat/chat.constants.js';
+import { getStorageProvider } from '#src/integrations/storage/index.js';
+import { mediaKindOf } from '#src/common/middleware/upload.middleware.js';
 import { settingsService } from '#src/modules/settings/settings.service.js';
 import { userRepository } from '#src/modules/users/user.repository.js';
 import { roomRepository } from '#src/modules/rooms/room.repository.js';
@@ -91,6 +93,14 @@ function toRoomMessageDto(message) {
     },
     type: message.type,
     text: message.text,
+    media: message.media
+      ? {
+          url: message.media.url,
+          durationSeconds: message.media.durationSeconds,
+          width: message.media.width,
+          height: message.media.height,
+        }
+      : null,
     createdAt: message.createdAt,
   };
 }
@@ -308,6 +318,79 @@ export async function sendRoomMessage({ user, roomId, text }) {
   return dto;
 }
 
+/**
+ * Sends a photo, voice note or short video to a room.
+ *
+ * The file goes to the storage provider and only its URL reaches the database,
+ * for the same reason avatars do: a 12MB video in Mongo would exhaust a free
+ * tier in a few hundred messages.
+ *
+ * Duration comes from the provider rather than the client. A phone reporting
+ * "5 seconds" for a two-minute recording is the difference between a working
+ * limit and a decorative one.
+ */
+export async function sendRoomMedia({ user, roomId, file, caption = '' }) {
+  const room = await loadLiveRoom(roomId);
+
+  if (!isParticipant(room, user.id)) {
+    throw new ForbiddenError('Join the room before sending anything', 'NOT_IN_ROOM');
+  }
+
+  if (!file) throw new BadRequestError('Choose a file to send', 'FILE_REQUIRED');
+
+  const kind = mediaKindOf(file.mimetype);
+  if (!kind) throw new BadRequestError('That file type is not supported', 'UNSUPPORTED_FILE_TYPE');
+
+  const type = {
+    image: MESSAGE_TYPE.IMAGE,
+    audio: MESSAGE_TYPE.VOICE,
+    video: MESSAGE_TYPE.VIDEO,
+  }[kind];
+
+  const storage = getStorageProvider();
+  const uploaded = await storage.upload({
+    buffer: file.buffer,
+    mimeType: file.mimetype,
+    folder: `rooms/${roomId}`,
+    fileName: kind,
+  });
+
+  const settings = await settingsService.getSettings();
+  const cleanCaption = settings.moderation.profanityFilterEnabled
+    ? maskBlockedWords(normalizeMessageText(caption), settings.moderation.blockedWords).text
+    : normalizeMessageText(caption);
+
+  const created = await roomRepository.createMessage({
+    roomId,
+    senderId: user.id,
+    type,
+    text: cleanCaption,
+    media: {
+      url: uploaded.url,
+      storageKey: uploaded.key,
+      resourceType: uploaded.resourceType ?? null,
+      mimeType: file.mimetype,
+      durationSeconds: uploaded.durationSeconds ?? null,
+      sizeBytes: file.size ?? null,
+    },
+  });
+
+  const dto = toRoomMessageDto({
+    ...created.toObject(),
+    senderId: {
+      _id: user.id,
+      nickname: user.nickname,
+      avatarUrl: user.avatarUrl,
+      avatarEmoji: user.avatarEmoji,
+      avatarColor: user.avatarColor,
+      gender: user.gender,
+    },
+  });
+
+  emitToRoom(roomId, SOCKET_EVENT.ROOM_MESSAGE_NEW, dto);
+  return dto;
+}
+
 export async function listRoomMessages({ user, roomId, limit, before }) {
   const room = await loadLiveRoom(roomId);
 
@@ -404,6 +487,7 @@ export async function handleUserDisconnected(userId) {
 }
 
 export const roomService = {
+  sendRoomMedia,
   createRoom,
   listRooms,
   getRoom,

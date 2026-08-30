@@ -21,11 +21,30 @@
  * @property {(key: string) => Promise<boolean>} remove
  */
 
-/** MIME type -> extension. Never derive an extension from the client filename. */
+/**
+ * MIME type -> extension.
+ *
+ * The extension is always derived from the declared type, never from the
+ * client's filename — a filename is attacker-controlled text and has no
+ * business deciding what a stored object is called.
+ */
 export const EXTENSION_BY_MIME_TYPE = Object.freeze({
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
+
+  'audio/m4a': 'm4a',
+  'audio/mp4': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/aac': 'aac',
+  'audio/webm': 'weba',
+  'audio/ogg': 'ogg',
+  'audio/3gpp': '3gp',
+
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
+  'video/3gpp': '3gp',
 });
 
 export function extensionFor(mimeType) {
