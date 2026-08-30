@@ -9,7 +9,8 @@
     "#src/*": "./src/*"
   },
   "scripts": {
-    "dev": "node --watch src/server.js",
+    "dev": "nodemon src/server.js",
+    "dev:node": "node --watch src/server.js",
     "start": "node src/server.js",
     "lint": "eslint \"src/**/*.js\" \"tests/**/*.js\"",
     "lint:fix": "eslint \"src/**/*.js\" --fix",
@@ -42,9 +43,10 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "^9.39.0",
     "eslint": "^9.14.0",
     "mongodb-memory-server": "^10.1.2",
+    "nodemon": "^3.1.14",
     "pino-pretty": "^13.0.0",
     "supertest": "^7.2.2",
     "vitest": "^2.1.5"
