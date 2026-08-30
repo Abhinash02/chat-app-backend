@@ -36,6 +36,49 @@ class RoomRepository {
     return { items, total };
   }
 
+  /**
+   * Live rooms near a point, nearest first.
+   *
+   * `$geoNear` has to be the first pipeline stage, so the status filter rides
+   * along in its `query` rather than as a later `$match`.
+   */
+  async findNearby({ coordinates, radiusKm, skip = 0, limit = 20 }) {
+    const pipeline = [
+      {
+        $geoNear: {
+          near: { type: 'Point', coordinates },
+          distanceField: 'distanceMeters',
+          maxDistance: radiusKm * 1000,
+          spherical: true,
+          key: 'location.coordinates',
+          query: { status: ROOM_STATUS.LIVE },
+        },
+      },
+      {
+        $facet: {
+          items: [
+            { $sort: { distanceMeters: 1, participantCount: -1 } },
+            { $skip: skip },
+            { $limit: limit },
+          ],
+          total: [{ $count: 'value' }],
+        },
+      },
+    ];
+
+    const [result] = await RoomModel.aggregate(pipeline).exec();
+    const items = result?.items ?? [];
+
+    // `aggregate` skips Mongoose population, so the host and participants are
+    // filled in afterwards rather than left as bare ids.
+    const populated = await RoomModel.populate(items, [
+      { path: 'hostId', select: 'nickname avatarUrl avatarEmoji avatarColor gender' },
+      { path: 'participants.userId', select: 'nickname avatarUrl avatarEmoji avatarColor gender' },
+    ]);
+
+    return { items: populated, total: result?.total?.[0]?.value ?? 0 };
+  }
+
   async findPopulatedById(roomId) {
     return RoomModel.findById(roomId)
       .populate('hostId', 'nickname avatarUrl avatarEmoji avatarColor gender')

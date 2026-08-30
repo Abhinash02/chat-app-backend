@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { MAX_DISCOVERY_RADIUS_KM } from '#src/common/constants/index.js';
 import { objectIdSchema, paginationSchema } from '#src/common/validators/common.schema.js';
 
 export const createRoomSchema = z
@@ -26,9 +27,16 @@ export const roomParticipantParamSchema = z.object({
   userId: objectIdSchema,
 });
 
-export const listRoomsSchema = paginationSchema.extend({
-  search: z.string().trim().min(1).max(40).optional(),
-});
+export const listRoomsSchema = paginationSchema
+  .extend({
+    search: z.string().trim().min(1).max(40).optional(),
+    latitude: z.coerce.number().min(-90).max(90).optional(),
+    longitude: z.coerce.number().min(-180).max(180).optional(),
+    radiusKm: z.coerce.number().min(1).max(MAX_DISCOVERY_RADIUS_KM).optional(),
+  })
+  .refine((value) => (value.latitude === undefined) === (value.longitude === undefined), {
+    message: 'Provide both latitude and longitude, or neither',
+  });
 
 export const sendRoomMessageSchema = z.object({ text: z.string().min(1).max(2000) }).strict();
 

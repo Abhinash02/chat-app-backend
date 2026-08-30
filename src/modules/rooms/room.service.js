@@ -12,6 +12,7 @@ import { emitToRoom } from '#src/realtime/emitter.js';
 import { SOCKET_EVENT } from '#src/realtime/events.js';
 import { MESSAGE_TYPE } from '#src/modules/chat/chat.constants.js';
 import { settingsService } from '#src/modules/settings/settings.service.js';
+import { userRepository } from '#src/modules/users/user.repository.js';
 import { roomRepository } from '#src/modules/rooms/room.repository.js';
 import { ROOM_ROLE, ROOM_STATUS } from '#src/modules/rooms/room.constants.js';
 
@@ -56,6 +57,11 @@ function toRoomDto(room, viewerId) {
     participantCount: room.participantCount ?? 0,
     maxParticipants: room.maxParticipants,
     participants: (room.participants ?? []).map(toParticipantDto),
+    distanceKm:
+      typeof room.distanceMeters === 'number'
+        ? Math.round((room.distanceMeters / 1000) * 10) / 10
+        : null,
+    city: room.location?.city ?? null,
     isJoined: viewerId
       ? (room.participants ?? []).some((participant) => {
           const id = participant.userId?._id ?? participant.userId;
@@ -126,6 +132,20 @@ export async function createRoom({ user, name, topic, isVoiceEnabled, isPrivate,
 
   const capacity = Math.min(maxParticipants ?? roomSettings.maxParticipants, roomSettings.maxParticipants);
 
+  /*
+   * The room takes the host's location at the moment it opens, so people
+   * nearby can find it. Absent when the host has not shared theirs, which
+   * leaves the room out of nearby results but still in the main list — a room
+   * without coordinates should not be a room nobody can join.
+   */
+  const host = await userRepository.findById(user.id);
+  const hostCoordinates = host?.location?.coordinates;
+
+  const location =
+    Array.isArray(hostCoordinates) && hostCoordinates.length === 2
+      ? { type: 'Point', coordinates: hostCoordinates, city: host.location?.city }
+      : undefined;
+
   const room = await roomRepository.create({
     name,
     topic: topic ?? '',
@@ -137,17 +157,30 @@ export async function createRoom({ user, name, topic, isVoiceEnabled, isPrivate,
     // The host is seated immediately, unmuted, so the room is never empty.
     participants: [{ userId: user.id, role: ROOM_ROLE.HOST, isMuted: false, joinedAt: new Date() }],
     participantCount: 1,
+    ...(location ? { location } : {}),
   });
 
   const populated = await roomRepository.findPopulatedById(room._id);
   return toRoomDto(populated, user.id);
 }
 
-export async function listRooms({ userId, page, limit, search }) {
+export async function listRooms({ userId, page, limit, search, latitude, longitude, radiusKm }) {
+  const settings = await settingsService.getSettings();
   await assertRoomsEnabled();
   const { skip, page: safePage, limit: safeLimit } = resolvePagination({ page, limit });
 
-  const { items, total } = await roomRepository.listLive({ skip, limit: safeLimit, search });
+  // Coordinates switch the list to a distance-ordered feed, the same way user
+  // discovery works — one mental model for "near me" across the app.
+  const useLocation = latitude !== undefined && longitude !== undefined;
+
+  const { items, total } = useLocation
+    ? await roomRepository.findNearby({
+        coordinates: [longitude, latitude],
+        radiusKm: Math.min(radiusKm ?? settings.discovery.defaultRadiusKm, settings.discovery.maxRadiusKm),
+        skip,
+        limit: safeLimit,
+      })
+    : await roomRepository.listLive({ skip, limit: safeLimit, search });
 
   return {
     items: items.map((room) => toRoomDto(room, userId)),
