@@ -98,6 +98,8 @@ async function issueOtp({ user, purpose }) {
 
   const code = generateNumericCode(OTP_LENGTH);
 
+  // The code is stored before it is sent, so verification works even if
+  // delivery fails and the user asks for a resend.
   await authRepository.upsertOtp({
     userId: user._id,
     email: user.email,
@@ -115,12 +117,24 @@ async function issueOtp({ user, purpose }) {
     appName,
   };
 
-  const result =
+  /*
+   * Delivery is deliberately not awaited.
+   *
+   * An SMTP round trip costs hundreds of milliseconds when it works and
+   * several seconds when it does not — a rejecting or unreachable provider was
+   * making signup take five seconds and feel broken. Nothing downstream needs
+   * the result: the code is already stored, and whether the mail arrived is
+   * something the user discovers by looking in their inbox, not something the
+   * API can usefully promise.
+   */
+  const send =
     purpose === OTP_PURPOSE.PASSWORD_RESET
-      ? await emailService.sendPasswordResetCode(payload)
-      : await emailService.sendVerificationCode(payload);
+      ? emailService.sendPasswordResetCode(payload)
+      : emailService.sendVerificationCode(payload);
 
-  return { delivered: result.delivered, expiresInMinutes: OTP_TTL_MINUTES };
+  send.catch((error) => logger.error({ err: error, purpose }, 'Verification email threw'));
+
+  return { sent: true, expiresInMinutes: OTP_TTL_MINUTES };
 }
 
 /**
@@ -198,7 +212,7 @@ export async function register({ name, nickname, email, password, gender, userAg
   // ask for another code from the banner.
   const otp = await issueOtp({ user, purpose: OTP_PURPOSE.EMAIL_VERIFICATION }).catch((error) => {
     logger.warn({ err: error, userId: String(user._id) }, 'Verification email failed at signup');
-    return { delivered: false, expiresInMinutes: OTP_TTL_MINUTES };
+    return { sent: false, expiresInMinutes: OTP_TTL_MINUTES };
   });
 
   const tokens = await issueSession({ user, userAgent, ipAddress });
