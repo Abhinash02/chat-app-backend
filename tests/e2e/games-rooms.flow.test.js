@@ -1,9 +1,10 @@
 import request from 'supertest';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GENDER } from '#src/common/constants/index.js';
 import { createApp } from '#src/app.js';
 import { GameSessionModel } from '#src/modules/games/game-session.model.js';
+import { localStorageProvider } from '#src/integrations/storage/index.js';
 import { walletRepository } from '#src/modules/coins/wallet.repository.js';
 import { applySettings, createUser, resetDatabase } from '../helpers/factories.js';
 import { authHeaderFor } from '../helpers/auth.js';
@@ -492,6 +493,65 @@ describe('games, leaderboard and rooms', () => {
         .expect(409);
 
       expect(second.body.error.code).toBe('ROOM_ALREADY_HOSTED');
+    });
+
+    /**
+     * The multipart route, exercised through the middleware chain.
+     *
+     * Multer has to parse the form before validation reads `req.body` — a
+     * service-level test walks straight past that and would not notice the
+     * order being wrong.
+     */
+    describe('media', () => {
+      /** A real m4a box header, so nothing rejects it as not-audio. */
+      const M4A_BYTES = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20]);
+
+      beforeEach(() => {
+        vi.restoreAllMocks();
+        vi.spyOn(localStorageProvider, 'upload').mockResolvedValue({
+          url: 'https://cdn.example/voice.m4a',
+          key: 'stored-key',
+          provider: 'local',
+          resourceType: 'video',
+          durationSeconds: 9,
+        });
+      });
+
+      it('should accept a voice note over multipart', async () => {
+        const host = await createUser();
+
+        const room = await request(app)
+          .post(`${API}/rooms`)
+          .set(authHeaderFor(host))
+          .send({ name: 'Voice room' })
+          .expect(201);
+
+        const response = await request(app)
+          .post(`${API}/rooms/${room.body.data.id}/media`)
+          .set(authHeaderFor(host))
+          .attach('file', M4A_BYTES, { filename: 'note.m4a', contentType: 'audio/m4a' })
+          .expect(201);
+
+        expect(response.body.data.type).toBe('voice');
+        expect(response.body.data.media.durationSeconds).toBe(9);
+      });
+
+      it('should refuse media from someone who has not joined', async () => {
+        const host = await createUser();
+        const outsider = await createUser();
+
+        const room = await request(app)
+          .post(`${API}/rooms`)
+          .set(authHeaderFor(host))
+          .send({ name: 'Private-ish' })
+          .expect(201);
+
+        await request(app)
+          .post(`${API}/rooms/${room.body.data.id}/media`)
+          .set(authHeaderFor(outsider))
+          .attach('file', M4A_BYTES, { filename: 'note.m4a', contentType: 'audio/m4a' })
+          .expect(403);
+      });
     });
   });
 });
