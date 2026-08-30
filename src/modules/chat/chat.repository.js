@@ -75,7 +75,12 @@ class ChatRepository {
       {
         $set: {
           lastMessage: {
-            text: message.text,
+            /*
+             * A photo sent without a caption has no text, and an empty line in
+             * the conversation list reads as a bug. The type is stored beside
+             * it so a client that wants its own wording still can.
+             */
+            text: message.text || (message.media ? '📷 Photo' : ''),
             type: message.type,
             senderId: message.senderId,
             sentAt: message.createdAt,

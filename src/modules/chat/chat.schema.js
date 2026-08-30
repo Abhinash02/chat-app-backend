@@ -54,3 +54,14 @@ export const reactToMessageSchema = z
   })
   .strict();
 
+/**
+ * The caption beside an uploaded photo.
+ *
+ * Not `.strict()`, like the other multipart bodies: an extra form part is a
+ * platform quirk rather than an attack, and refusing the whole upload over one
+ * reports a validation error about a field nobody filled in.
+ */
+export const sendImageMessageSchema = z.object({
+  caption: z.string().trim().max(1000).optional().default(''),
+});
+

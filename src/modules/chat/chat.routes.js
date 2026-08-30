@@ -1,6 +1,11 @@
 import { Router } from 'express';
 
-import { authenticate, requireVerifiedAccount, validate } from '#src/common/middleware/index.js';
+import {
+  authenticate,
+  requireVerifiedAccount,
+  uploadImage,
+  validate,
+} from '#src/common/middleware/index.js';
 import { chatController } from '#src/modules/chat/chat.controller.js';
 import {
   conversationIdParamSchema,
@@ -10,6 +15,7 @@ import {
   messageIdParamSchema,
   openConversationSchema,
   reactToMessageSchema,
+  sendImageMessageSchema,
   sendMessageSchema,
 } from '#src/modules/chat/chat.schema.js';
 
@@ -43,6 +49,16 @@ router.post(
   '/conversations/:conversationId/messages',
   validate({ params: conversationIdParamSchema, body: sendMessageSchema }),
   chatController.sendMessage,
+);
+/**
+ * Photos. Multer runs before validation, because `req.body` does not exist
+ * until the multipart form has been parsed.
+ */
+router.post(
+  '/conversations/:conversationId/media',
+  uploadImage.single('file'),
+  validate({ params: conversationIdParamSchema, body: sendImageMessageSchema }),
+  chatController.sendImageMessage,
 );
 router.post(
   '/conversations/:conversationId/read',

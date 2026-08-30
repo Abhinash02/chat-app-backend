@@ -15,6 +15,8 @@ import { settingsService } from '#src/modules/settings/settings.service.js';
 import { userService } from '#src/modules/users/user.service.js';
 import { userRepository } from '#src/modules/users/user.repository.js';
 import { chatRepository } from '#src/modules/chat/chat.repository.js';
+import { getStorageProvider } from '#src/integrations/storage/index.js';
+import { mediaKindOf } from '#src/common/middleware/upload.middleware.js';
 import {
   CONVERSATION_STATUS,
   DELETE_SCOPE,
@@ -70,6 +72,14 @@ function toMessageDto(message, viewerId) {
     deliveredAt: message.deliveredAt ?? null,
     readAt: message.readAt ?? null,
     deliveryState: deliveryStateOf(message),
+    media:
+      message.media && !message.isDeleted
+        ? {
+            url: message.media.url,
+            width: message.media.width ?? null,
+            height: message.media.height ?? null,
+          }
+        : null,
     reactions: message.isDeleted ? [] : toReactionSummary(message.reactions, viewerId),
     createdAt: message.createdAt,
   };
@@ -214,7 +224,13 @@ export async function openConversation({ user, targetUserId }) {
  * sender could not pay for is never written, so the ledger and the thread can
  * never disagree.
  */
-export async function sendMessage({ user, conversationId, text, type, isAutoGreeting = false }) {
+/**
+ * The checks every outgoing message passes, whatever it carries.
+ *
+ * Shared so a photo cannot slip past a block or a closed conversation just
+ * because it took a different route in than text did.
+ */
+async function assertCanSend({ user, conversationId }) {
   const conversation = await loadParticipantConversation({ conversationId, userId: user.id });
 
   if (conversation.status !== CONVERSATION_STATUS.ACTIVE) {
@@ -226,6 +242,65 @@ export async function sendMessage({ user, conversationId, text, type, isAutoGree
   if (await userService.areUsersBlocked(user.id, recipientId)) {
     throw new ForbiddenError('This conversation is not available', 'USER_BLOCKED');
   }
+
+  return { conversation, recipientId };
+}
+
+/**
+ * Everything that happens once a message exists: delivery, sockets, push.
+ *
+ * Kept in one place so text and photos cannot drift apart on the details that
+ * are easy to forget — the delivery tick, the second emit that updates a
+ * closed chat list, the push that must not fire at someone already watching.
+ */
+async function deliverMessage({ conversation, created, user, recipientId, pushBody }) {
+  await chatRepository.applyMessageToConversation({
+    conversationId: conversation._id,
+    message: created,
+    recipientId,
+  });
+
+  /*
+   * If they are connected, the message reaches their device now — so it is
+   * delivered now. Waiting for them to open the thread meant a message could
+   * sit on someone's phone, visible in their notification shade, still showing
+   * a single tick to the sender.
+   */
+  const recipientUser = await userRepository.findById(recipientId);
+  const isRecipientConnected = Boolean(recipientUser?.isOnline);
+
+  if (isRecipientConnected) {
+    await chatRepository.markDelivered({ conversationId: conversation._id, recipientId });
+    created.deliveredAt = new Date();
+  }
+
+  const dto = toMessageDto(created);
+
+  emitToConversation(conversation._id, SOCKET_EVENT.MESSAGE_NEW, dto);
+  // Also addressed to the recipient directly, so a closed chat screen still
+  // updates the conversation list and unread badge.
+  emitToUser(recipientId, SOCKET_EVENT.MESSAGE_NEW, dto);
+
+  // Push only reaches people who are not currently connected. Someone with the
+  // app open already saw the socket event; notifying them twice is noise.
+  if (recipientUser && !isRecipientConnected) {
+    notificationService
+      .sendToUser({
+        userId: recipientId,
+        title: user.nickname,
+        body: pushBody,
+        data: { type: 'message', conversationId: String(conversation._id) },
+      })
+      // Delivery is best effort: a failed push must never fail the message
+      // that has already been stored and delivered over the socket.
+      .catch((error) => logger.warn({ err: error }, 'Message push failed'));
+  }
+
+  return dto;
+}
+
+export async function sendMessage({ user, conversationId, text, type, isAutoGreeting = false }) {
+  const { conversation, recipientId } = await assertCanSend({ user, conversationId });
 
   const settings = await settingsService.getSettings();
   const normalized = normalizeMessageText(text);
@@ -264,47 +339,13 @@ export async function sendMessage({ user, conversationId, text, type, isAutoGree
     billing: { outcome: billing.outcome, coinsCharged: billing.coinsCharged },
   });
 
-  await chatRepository.applyMessageToConversation({
-    conversationId: conversation._id,
-    message: created,
+  const dto = await deliverMessage({
+    conversation,
+    created,
+    user,
     recipientId,
+    pushBody: truncate(finalText, 120),
   });
-
-  /*
-   * If they are connected, the message reaches their device now — so it is
-   * delivered now. Waiting for them to open the thread meant a message could
-   * sit on someone's phone, visible in their notification shade, still showing
-   * a single tick to the sender.
-   */
-  const recipientUser = await userRepository.findById(recipientId);
-  const isRecipientConnected = Boolean(recipientUser?.isOnline);
-
-  if (isRecipientConnected) {
-    await chatRepository.markDelivered({ conversationId: conversation._id, recipientId });
-    created.deliveredAt = new Date();
-  }
-
-  const dto = toMessageDto(created);
-
-  emitToConversation(conversation._id, SOCKET_EVENT.MESSAGE_NEW, dto);
-  // Also addressed to the recipient directly, so a closed chat screen still
-  // updates the conversation list and unread badge.
-  emitToUser(recipientId, SOCKET_EVENT.MESSAGE_NEW, dto);
-
-  // Push only reaches people who are not currently connected. Someone with the
-  // app open already saw the socket event; notifying them twice is noise.
-  if (recipientUser && !isRecipientConnected) {
-    notificationService
-      .sendToUser({
-        userId: recipientId,
-        title: user.nickname,
-        body: truncate(finalText, 120),
-        data: { type: 'message', conversationId: String(conversation._id) },
-      })
-      // Delivery is best effort: a failed push must never fail the message
-      // that has already been stored and delivered over the socket.
-      .catch((error) => logger.warn({ err: error }, 'Message push failed'));
-  }
 
   return {
     message: dto,
@@ -314,6 +355,84 @@ export async function sendMessage({ user, conversationId, text, type, isAutoGree
       wallet: billing.snapshot,
     },
     isAutoGreeting,
+  };
+}
+
+/**
+ * Sends a photo into a conversation.
+ *
+ * Billed exactly like a sentence. A photo that cost nothing would be an
+ * obvious way around the coin system, and "images are free" is not a rule
+ * anyone asked for — the allowance counts messages, and this is one.
+ *
+ * The upload happens after authorization for the same reason the text path
+ * bills before it writes: a message the sender cannot pay for should never
+ * reach storage, or the ledger and the thread disagree and someone has to
+ * reconcile them by hand.
+ */
+export async function sendImageMessage({ user, conversationId, file, caption = '' }) {
+  const { conversation, recipientId } = await assertCanSend({ user, conversationId });
+
+  if (!file) throw new BadRequestError('Choose a photo to send', 'FILE_REQUIRED');
+
+  if (mediaKindOf(file.mimetype) !== 'image') {
+    throw new BadRequestError('That file is not a photo', 'UNSUPPORTED_FILE_TYPE');
+  }
+
+  const settings = await settingsService.getSettings();
+  const cleanCaption = settings.moderation.profanityFilterEnabled
+    ? maskBlockedWords(normalizeMessageText(caption), settings.moderation.blockedWords).text
+    : normalizeMessageText(caption);
+
+  const billing = await coinsService.authorizeMessage({
+    userId: user.id,
+    gender: user.gender,
+    conversationId: conversation._id,
+  });
+
+  const storage = getStorageProvider();
+  const uploaded = await storage.upload({
+    buffer: file.buffer,
+    mimeType: file.mimetype,
+    folder: `chat/${conversation._id}`,
+    fileName: 'photo',
+  });
+
+  const created = await chatRepository.createMessage({
+    conversationId: conversation._id,
+    senderId: user.id,
+    recipientId,
+    type: MESSAGE_TYPE.IMAGE,
+    text: cleanCaption,
+    media: {
+      url: uploaded.url,
+      storageKey: uploaded.key,
+      resourceType: uploaded.resourceType ?? 'image',
+      mimeType: file.mimetype,
+      width: uploaded.width ?? null,
+      height: uploaded.height ?? null,
+      sizeBytes: file.size ?? null,
+    },
+    billing: { outcome: billing.outcome, coinsCharged: billing.coinsCharged },
+  });
+
+  const dto = await deliverMessage({
+    conversation,
+    created,
+    user,
+    recipientId,
+    // A caption if there is one, otherwise something that reads properly on a
+    // lock screen — "" would show an empty notification.
+    pushBody: cleanCaption ? truncate(cleanCaption, 120) : '📷 Photo',
+  });
+
+  return {
+    message: dto,
+    billing: {
+      outcome: billing.outcome,
+      coinsCharged: billing.coinsCharged,
+      wallet: billing.snapshot,
+    },
   };
 }
 
@@ -492,6 +611,7 @@ export async function closeConversation({ userId, conversationId }) {
 export const chatService = {
   openConversation,
   sendMessage,
+  sendImageMessage,
   listConversations,
   getConversation,
   listMessages,

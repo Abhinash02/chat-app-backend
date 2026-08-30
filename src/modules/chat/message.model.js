@@ -22,7 +22,35 @@ const messageSchema = new mongoose.Schema(
     recipientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
     type: { type: String, enum: Object.values(MESSAGE_TYPE), default: MESSAGE_TYPE.TEXT },
-    text: { type: String, required: true, maxlength: 5000 },
+
+    /**
+     * The words, or a photo's caption. No longer required: a picture sent on
+     * its own has nothing to say and should not be forced to.
+     */
+    text: { type: String, default: '', maxlength: 5000 },
+
+    /**
+     * The stored file, for a message that carries one.
+     *
+     * Dimensions are kept alongside the URL so a bubble can be laid out at the
+     * right shape before the image arrives — without them the thread jumps as
+     * each photo loads and pushes the rest of the conversation around.
+     */
+    media: {
+      type: new mongoose.Schema(
+        {
+          url: { type: String, required: true },
+          storageKey: { type: String, default: null },
+          resourceType: { type: String, default: null },
+          mimeType: { type: String, default: null },
+          width: { type: Number, default: null },
+          height: { type: Number, default: null },
+          sizeBytes: { type: Number, default: null },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
 
     deliveredAt: { type: Date, default: null },
     readAt: { type: Date, default: null },

@@ -70,6 +70,16 @@ export const chatController = {
     return sendSuccess(res, result);
   }),
 
+  sendImageMessage: asyncHandler(async (req, res) => {
+    const result = await chatService.sendImageMessage({
+      user: req.user,
+      conversationId: req.params.conversationId,
+      file: req.file,
+      caption: req.body?.caption ?? '',
+    });
+    return sendCreated(res, result);
+  }),
+
   reactToMessage: asyncHandler(async (req, res) => {
     const message = await chatService.reactToMessage({
       userId: req.user.id,
