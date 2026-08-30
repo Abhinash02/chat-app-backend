@@ -3,7 +3,11 @@ import { Router } from 'express';
 import { authenticate, requireAdmin, validate } from '#src/common/middleware/index.js';
 import { idParamSchema } from '#src/common/validators/common.schema.js';
 import { themeController } from '#src/modules/theme/theme.controller.js';
-import { createThemeSchema, updateThemeSchema } from '#src/modules/theme/theme.schema.js';
+import {
+  createThemeSchema,
+  scheduleThemeSchema,
+  updateThemeSchema,
+} from '#src/modules/theme/theme.schema.js';
 
 const router = Router();
 
@@ -20,6 +24,11 @@ router.patch(
   themeController.updateTheme,
 );
 router.post('/:id/activate', validate({ params: idParamSchema }), themeController.activateTheme);
+router.post(
+  '/:id/schedule',
+  validate({ params: idParamSchema, body: scheduleThemeSchema }),
+  themeController.scheduleTheme,
+);
 router.delete('/:id', validate({ params: idParamSchema }), themeController.deleteTheme);
 
 export const themeRoutes = router;

@@ -147,7 +147,76 @@ export async function deleteTheme(themeId) {
   return { deleted: true };
 }
 
+/**
+ * Swaps themes whose scheduled window has opened or closed.
+ *
+ * Run from the housekeeping sweep. Both halves are conditional on current
+ * state, so several instances running this at once cannot fight over which
+ * theme is live — the second one finds nothing due and does nothing.
+ */
+export async function applyScheduledThemes() {
+  const now = new Date();
+  let changed = null;
+
+  const expired = await themeRepository.findExpiredActive(now);
+  if (expired) {
+    const fallbackSlug = expired.revertToSlug ?? DEFAULT_THEME_SLUG;
+    const fallback = await themeRepository.findBySlug(fallbackSlug);
+
+    if (fallback) {
+      await themeRepository.updateById(fallback._id, { $set: { isActive: true } });
+      await themeRepository.deactivateAllExcept(fallback._id);
+      // Clear the window so an ended run does not keep re-triggering.
+      await themeRepository.updateById(expired._id, {
+        $set: { scheduledFrom: null, scheduledUntil: null },
+      });
+
+      logger.info({ from: expired.slug, to: fallback.slug }, 'Scheduled theme ended');
+      changed = fallback.slug;
+    }
+  }
+
+  const due = await themeRepository.findDueToActivate(now);
+  if (due) {
+    await themeRepository.updateById(due._id, { $set: { isActive: true } });
+    await themeRepository.deactivateAllExcept(due._id);
+
+    logger.info({ slug: due.slug, until: due.scheduledUntil }, 'Scheduled theme started');
+    changed = due.slug;
+  }
+
+  if (changed) await broadcastActiveTheme();
+
+  return { changed };
+}
+
+/** Books a theme to run between two dates, without making it live now. */
+export async function scheduleTheme({ themeId, scheduledFrom, scheduledUntil, revertToSlug }) {
+  const theme = await themeRepository.findById(themeId);
+  if (!theme) throw new NotFoundError('Theme not found', 'THEME_NOT_FOUND');
+
+  if (scheduledFrom && scheduledUntil && new Date(scheduledUntil) <= new Date(scheduledFrom)) {
+    throw new BadRequestError('The end date must come after the start date', 'INVALID_SCHEDULE');
+  }
+
+  const updated = await themeRepository.updateById(theme._id, {
+    $set: {
+      scheduledFrom: scheduledFrom ?? null,
+      scheduledUntil: scheduledUntil ?? null,
+      revertToSlug: revertToSlug ?? DEFAULT_THEME_SLUG,
+    },
+  });
+
+  // A window that has already opened should take effect now rather than
+  // waiting up to fifteen minutes for the next sweep.
+  await applyScheduledThemes();
+
+  return updated;
+}
+
 export const themeService = {
+  applyScheduledThemes,
+  scheduleTheme,
   getActiveTheme,
   listThemes,
   activateTheme,

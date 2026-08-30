@@ -3,8 +3,35 @@ import mongoose from 'mongoose';
 import {
   AUDIENCE_PRESET,
   CAMPAIGN_CHANNEL,
+  CAMPAIGN_REPEAT,
   CAMPAIGN_STATUS,
 } from '#src/modules/notifications/notification.constants.js';
+
+/**
+ * A recurring send.
+ *
+ * The time is stored as a wall-clock hour and minute plus an IANA timezone
+ * rather than as a UTC instant, because "every day at 7pm" has to stay 7pm for
+ * the audience across a daylight-saving change. Storing UTC would silently
+ * shift the send by an hour twice a year.
+ */
+const repeatSchema = new mongoose.Schema(
+  {
+    rule: { type: String, enum: Object.values(CAMPAIGN_REPEAT), default: CAMPAIGN_REPEAT.NONE },
+    hour: { type: Number, min: 0, max: 23, default: 9 },
+    minute: { type: Number, min: 0, max: 59, default: 0 },
+    /** 0 = Sunday. Only read for a weekly rule. */
+    weekday: { type: Number, min: 0, max: 6, default: 1 },
+    timezone: { type: String, default: 'Asia/Kolkata' },
+
+    /** Cleared when an admin pauses the schedule without deleting it. */
+    isEnabled: { type: Boolean, default: true },
+    lastRunAt: { type: Date, default: null },
+    nextRunAt: { type: Date, default: null, index: true },
+    runCount: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false },
+);
 
 const audienceSchema = new mongoose.Schema(
   {
@@ -78,6 +105,7 @@ const campaignSchema = new mongoose.Schema(
     cursorUserId: { type: mongoose.Schema.Types.ObjectId, default: null },
 
     scheduledAt: { type: Date, default: null },
+    repeat: { type: repeatSchema, default: () => ({}) },
     startedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
     failureReason: { type: String, default: null },
@@ -88,6 +116,8 @@ const campaignSchema = new mongoose.Schema(
 );
 
 campaignSchema.index({ status: 1, scheduledAt: 1 });
+// Drives the recurring-campaign sweep.
+campaignSchema.index({ 'repeat.isEnabled': 1, 'repeat.nextRunAt': 1 });
 campaignSchema.index({ createdAt: -1 });
 
 export const CampaignModel = mongoose.model('Campaign', campaignSchema);

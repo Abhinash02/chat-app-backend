@@ -71,6 +71,14 @@ export const notificationController = {
     return sendSuccess(res, campaign);
   }),
 
+  setSchedule: asyncHandler(async (req, res) => {
+    const campaign = await campaignService.setSchedule({
+      campaignId: req.params.campaignId,
+      repeat: req.body.repeat,
+    });
+    return sendSuccess(res, campaign);
+  }),
+
   cancelCampaign: asyncHandler(async (req, res) => {
     const campaign = await campaignService.cancelCampaign(req.params.campaignId);
     return sendSuccess(res, campaign);

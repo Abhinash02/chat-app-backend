@@ -14,6 +14,13 @@ export const CAMPAIGN_STATUS = Object.freeze({
   CANCELLED: 'cancelled',
 });
 
+export const CAMPAIGN_REPEAT = Object.freeze({
+  /** Sends once and finishes. */
+  NONE: 'none',
+  DAILY: 'daily',
+  WEEKLY: 'weekly',
+});
+
 export const AUDIENCE_PRESET = Object.freeze({
   EVERYONE: 'everyone',
   BOYS: 'boys',

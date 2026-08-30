@@ -43,6 +43,16 @@ const themeSchema = new mongoose.Schema(
     /** Presets ship with the product and cannot be deleted by an admin. */
     isPreset: { type: Boolean, default: false },
     isActive: { type: Boolean, default: false, index: true },
+
+    /**
+     * Optional scheduled run. A festival theme is set once, weeks ahead, and
+     * swaps itself in and out — nobody should be activating Diwali by hand at
+     * midnight, or remembering to switch it off a week later.
+     */
+    scheduledFrom: { type: Date, default: null },
+    scheduledUntil: { type: Date, default: null },
+    /** The theme to fall back to when a scheduled run ends. */
+    revertToSlug: { type: String, default: null },
     colors: { type: colorsSchema, default: () => ({}) },
     branding: { type: brandingSchema, default: () => ({}) },
     updatedByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
@@ -51,5 +61,7 @@ const themeSchema = new mongoose.Schema(
 );
 
 themeSchema.index({ slug: 1 }, { unique: true });
+// Drives the scheduler sweep.
+themeSchema.index({ scheduledFrom: 1, scheduledUntil: 1 });
 
 export const ThemeModel = mongoose.model('Theme', themeSchema);

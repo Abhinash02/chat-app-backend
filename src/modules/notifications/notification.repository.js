@@ -125,6 +125,57 @@ class NotificationRepository {
     return CampaignModel.findByIdAndUpdate(campaignId, update, { new: true }).lean().exec();
   }
 
+  /** Recurring campaigns whose next slot has arrived. */
+  async findDueRecurring(now = new Date()) {
+    return CampaignModel.find({
+      'repeat.isEnabled': true,
+      'repeat.nextRunAt': { $ne: null, $lte: now },
+      // A run still in flight must not be started again on top of itself.
+      status: { $nin: [CAMPAIGN_STATUS.QUEUED, CAMPAIGN_STATUS.SENDING] },
+    })
+      .limit(10)
+      .lean()
+      .exec();
+  }
+
+  /**
+   * Starts another run of a recurring campaign.
+   *
+   * Conditional on the campaign not already being queued or sending, so two
+   * instances sweeping at the same second cannot both start the same run — the
+   * loser's filter simply does not match.
+   */
+  async requeueRecurring({ campaignId, targeted, nextRunAt, now }) {
+    return CampaignModel.findOneAndUpdate(
+      { _id: campaignId, status: { $nin: [CAMPAIGN_STATUS.QUEUED, CAMPAIGN_STATUS.SENDING] } },
+      {
+        $set: {
+          status: CAMPAIGN_STATUS.QUEUED,
+          scheduledAt: null,
+          cursorUserId: null,
+          startedAt: null,
+          completedAt: null,
+          failureReason: null,
+          'repeat.lastRunAt': now,
+          'repeat.nextRunAt': nextRunAt,
+          // Counters describe the run in progress; `repeat.runCount` is the
+          // number that accumulates across runs.
+          'stats.targeted': targeted,
+          'stats.pushSent': 0,
+          'stats.pushFailed': 0,
+          'stats.emailSent': 0,
+          'stats.emailFailed': 0,
+          'stats.optedOut': 0,
+          'stats.tokensRetired': 0,
+        },
+        $inc: { 'repeat.runCount': 1 },
+      },
+      { new: true },
+    )
+      .lean()
+      .exec();
+  }
+
   /** Rescues campaigns left mid-send by a crash or a deploy. */
   async requeueStuckCampaigns(stuckBefore) {
     return CampaignModel.updateMany(

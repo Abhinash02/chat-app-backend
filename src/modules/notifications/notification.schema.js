@@ -4,9 +4,40 @@ import { emailSchema, objectIdSchema, paginationSchema } from '#src/common/valid
 import {
   AUDIENCE_PRESET,
   CAMPAIGN_CHANNEL,
+  CAMPAIGN_REPEAT,
   CAMPAIGN_STATUS,
   DEVICE_PLATFORM,
 } from '#src/modules/notifications/notification.constants.js';
+
+/**
+ * A repeat rule. The time is a wall-clock hour and minute in a named zone, not
+ * a UTC instant, so "every day at 7pm" stays 7pm across a daylight-saving
+ * change instead of drifting by an hour twice a year.
+ */
+export const repeatSchema = z
+  .object({
+    rule: z.nativeEnum(CAMPAIGN_REPEAT).default(CAMPAIGN_REPEAT.NONE),
+    hour: z.number().int().min(0).max(23).default(9),
+    minute: z.number().int().min(0).max(59).default(0),
+    weekday: z.number().int().min(0).max(6).optional(),
+    timezone: z
+      .string()
+      .trim()
+      .max(64)
+      .refine((zone) => {
+        // Reject a zone the server cannot resolve, rather than storing it and
+        // failing every time the scheduler runs.
+        try {
+          new Intl.DateTimeFormat('en-US', { timeZone: zone });
+          return true;
+        } catch {
+          return false;
+        }
+      }, 'Unknown timezone')
+      .default('Asia/Kolkata'),
+    isEnabled: z.boolean().default(true),
+  })
+  .strict();
 
 export const registerDeviceSchema = z
   .object({
@@ -58,6 +89,7 @@ export const createCampaignSchema = z
     audience: audienceSchema.optional(),
     push: pushContentSchema.optional(),
     email: emailContentSchema.optional(),
+    repeat: repeatSchema.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -120,3 +152,5 @@ export const updateTemplateSchema = templateSchema
 export const templateIdParamSchema = z.object({ templateId: objectIdSchema });
 
 export const unsubscribeQuerySchema = z.object({ token: z.string().min(10).max(300) });
+
+export const setScheduleSchema = z.object({ repeat: repeatSchema }).strict();

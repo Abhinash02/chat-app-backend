@@ -45,3 +45,19 @@ export const updateThemeSchema = z
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, { message: 'Nothing to update' });
+
+export const scheduleThemeSchema = z
+  .object({
+    /** Null on either side clears that bound. */
+    scheduledFrom: z.coerce.date().nullable().optional(),
+    scheduledUntil: z.coerce.date().nullable().optional(),
+    /** What to fall back to when the run ends. Defaults to the standard theme. */
+    revertToSlug: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^[a-z0-9-]+$/)
+      .max(40)
+      .optional(),
+  })
+  .strict();

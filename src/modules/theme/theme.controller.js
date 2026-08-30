@@ -28,6 +28,11 @@ export const themeController = {
     return sendSuccess(res, theme);
   }),
 
+  scheduleTheme: asyncHandler(async (req, res) => {
+    const theme = await themeService.scheduleTheme({ themeId: req.params.id, ...req.body });
+    return sendSuccess(res, theme);
+  }),
+
   deleteTheme: asyncHandler(async (req, res) => {
     const result = await themeService.deleteTheme(req.params.id);
     return sendSuccess(res, result);

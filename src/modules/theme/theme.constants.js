@@ -138,12 +138,166 @@ const OCEAN = {
   coinGold: '#F59E0B',
 };
 
+
+// ---------------------------------------------------------------------------
+// Festival palettes
+//
+// Seeded alongside the everyday themes so an admin can switch the whole app
+// over for Diwali or Holi in one click, or schedule it to happen by itself.
+// Each keeps the same contrast relationships as the defaults — a festival
+// should change the mood, not make the chat unreadable.
+// ---------------------------------------------------------------------------
+
+const DIWALI = {
+  primary: '#E8590C',
+  primaryDark: '#BF400A',
+  primaryLight: '#FFA94D',
+  onPrimary: '#FFFFFF',
+  secondary: '#9C36B5',
+  accent: '#F59F00',
+  background: '#FFF9F0',
+  surface: '#FFFFFF',
+  surfaceAlt: '#FFF3DC',
+  border: '#F3DFC0',
+  textPrimary: '#2B1B0E',
+  textSecondary: '#6B5138',
+  textMuted: '#A08B70',
+  success: '#2F9E44',
+  warning: '#F08C00',
+  danger: '#E03131',
+  info: '#1971C2',
+  gradientStart: '#E8590C',
+  gradientEnd: '#9C36B5',
+  maleAccent: '#1971C2',
+  femaleAccent: '#E8590C',
+  onlineDot: '#2F9E44',
+  offlineDot: '#C7B49B',
+  coinGold: '#F59F00',
+};
+
+const HOLI = {
+  primary: '#D6336C',
+  primaryDark: '#A61E4D',
+  primaryLight: '#F783AC',
+  onPrimary: '#FFFFFF',
+  secondary: '#7048E8',
+  accent: '#0CA678',
+  background: '#FFF7FB',
+  surface: '#FFFFFF',
+  surfaceAlt: '#FDE8F2',
+  border: '#F5D0E2',
+  textPrimary: '#1F1024',
+  textSecondary: '#5B4468',
+  textMuted: '#9884A6',
+  success: '#0CA678',
+  warning: '#F59F00',
+  danger: '#F03E3E',
+  info: '#4C6EF5',
+  gradientStart: '#D6336C',
+  gradientEnd: '#0CA678',
+  maleAccent: '#4C6EF5',
+  femaleAccent: '#D6336C',
+  onlineDot: '#0CA678',
+  offlineDot: '#C3B2CC',
+  coinGold: '#FCC419',
+};
+
+const NEW_YEAR = {
+  primary: '#F1C40F',
+  primaryDark: '#C9A00B',
+  primaryLight: '#FFE066',
+  onPrimary: '#1A1A2E',
+  secondary: '#845EF7',
+  accent: '#22B8CF',
+  background: '#0F0F1E',
+  surface: '#1B1B31',
+  surfaceAlt: '#252542',
+  border: '#33335A',
+  textPrimary: '#FFFDF0',
+  textSecondary: '#C7C4DE',
+  textMuted: '#8B88A8',
+  success: '#51CF66',
+  warning: '#FFD43B',
+  danger: '#FF6B6B',
+  info: '#4DABF7',
+  gradientStart: '#F1C40F',
+  gradientEnd: '#845EF7',
+  maleAccent: '#4DABF7',
+  femaleAccent: '#F783AC',
+  onlineDot: '#51CF66',
+  offlineDot: '#5A5878',
+  coinGold: '#FFD43B',
+};
+
+const EID = {
+  primary: '#1B9E77',
+  primaryDark: '#147556',
+  primaryLight: '#63D8B4',
+  onPrimary: '#FFFFFF',
+  secondary: '#B8860B',
+  accent: '#D4AF37',
+  background: '#F5FBF8',
+  surface: '#FFFFFF',
+  surfaceAlt: '#E4F4ED',
+  border: '#C9E5D9',
+  textPrimary: '#0B2119',
+  textSecondary: '#3F5E52',
+  textMuted: '#82A196',
+  success: '#1B9E77',
+  warning: '#D4AF37',
+  danger: '#D64545',
+  info: '#2C7BE5',
+  gradientStart: '#1B9E77',
+  gradientEnd: '#D4AF37',
+  maleAccent: '#2C7BE5',
+  femaleAccent: '#1B9E77',
+  onlineDot: '#1B9E77',
+  offlineDot: '#A9C2B8',
+  coinGold: '#D4AF37',
+};
+
+const CHRISTMAS = {
+  primary: '#C92A2A',
+  primaryDark: '#A51111',
+  primaryLight: '#FF8787',
+  onPrimary: '#FFFFFF',
+  secondary: '#2B8A3E',
+  accent: '#D4AF37',
+  background: '#FFF8F8',
+  surface: '#FFFFFF',
+  surfaceAlt: '#FCE9E9',
+  border: '#F0D2D2',
+  textPrimary: '#1F0E0E',
+  textSecondary: '#5C4040',
+  textMuted: '#A08585',
+  success: '#2B8A3E',
+  warning: '#E8A317',
+  danger: '#C92A2A',
+  info: '#1C7ED6',
+  gradientStart: '#C92A2A',
+  gradientEnd: '#2B8A3E',
+  maleAccent: '#1C7ED6',
+  femaleAccent: '#C92A2A',
+  onlineDot: '#2B8A3E',
+  offlineDot: '#C4AAAA',
+  coinGold: '#D4AF37',
+};
+
+const FESTIVAL_PRESETS = [
+  { slug: 'diwali', name: 'Diwali', description: 'Warm lamps, marigold and deep violet.', colors: DIWALI, isDark: false },
+  { slug: 'holi', name: 'Holi', description: 'Bright pink, violet and green.', colors: HOLI, isDark: false },
+  { slug: 'new-year', name: 'New Year', description: 'Midnight and gold, for the countdown.', colors: NEW_YEAR, isDark: true },
+  { slug: 'eid', name: 'Eid', description: 'Green and gold, calm and celebratory.', colors: EID, isDark: false },
+  { slug: 'christmas', name: 'Christmas', description: 'Classic red, pine green and gold.', colors: CHRISTMAS, isDark: false },
+];
+
 /** Seeded on first boot; an admin activates one of these with a single click. */
 export const THEME_PRESETS = Object.freeze([
   { slug: 'blush', name: 'Blush', description: 'Warm pink and violet — the default look.', colors: BLUSH, isDark: false },
   { slug: 'midnight', name: 'Midnight', description: 'Deep violet dark mode.', colors: MIDNIGHT, isDark: true },
   { slug: 'sunset', name: 'Sunset', description: 'Orange and amber, high energy.', colors: SUNSET, isDark: false },
   { slug: 'ocean', name: 'Ocean', description: 'Cool blue and teal, calm and clean.', colors: OCEAN, isDark: false },
+  ...FESTIVAL_PRESETS,
 ]);
 
 export const DEFAULT_THEME_SLUG = 'blush';

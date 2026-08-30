@@ -20,6 +20,7 @@ import '#src/modules/payments/payment.model.js';
 import '#src/modules/reports/report.model.js';
 import '#src/modules/settings/settings.model.js';
 import '#src/modules/theme/theme.model.js';
+import '#src/modules/banners/banner.model.js';
 import '#src/modules/notifications/device-token.model.js';
 import '#src/modules/notifications/campaign.model.js';
 import '#src/modules/notifications/email-template.model.js';

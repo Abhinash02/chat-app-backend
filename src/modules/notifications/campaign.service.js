@@ -18,8 +18,10 @@ import { notificationService } from '#src/modules/notifications/notification.ser
 import {
   CAMPAIGN_BATCH_SIZE,
   CAMPAIGN_CHANNEL,
+  CAMPAIGN_REPEAT,
   CAMPAIGN_STATUS,
 } from '#src/modules/notifications/notification.constants.js';
+import { computeNextRun, describeSchedule } from '#src/modules/notifications/schedule.util.js';
 
 
 function sendsPush(channel) {
@@ -55,7 +57,7 @@ export async function previewAudience(audience) {
   };
 }
 
-export async function createCampaign({ admin, name, channel, audience, push, email }) {
+export async function createCampaign({ admin, name, channel, audience, push, email, repeat }) {
   if (sendsPush(channel) && !push?.title?.trim()) {
     throw new BadRequestError('Give the notification a title', 'PUSH_TITLE_REQUIRED');
   }
@@ -84,6 +86,12 @@ export async function createCampaign({ admin, name, channel, audience, push, ema
     };
   }
 
+  // A repeating campaign knows its first slot the moment it is created, so the
+  // admin sees "next run" immediately rather than after the first sweep.
+  const repeatConfig = repeat?.rule && repeat.rule !== CAMPAIGN_REPEAT.NONE
+    ? { ...repeat, isEnabled: repeat.isEnabled ?? true, nextRunAt: computeNextRun({ ...repeat, isEnabled: true }) }
+    : undefined;
+
   const campaign = await notificationRepository.createCampaign({
     name,
     channel,
@@ -92,6 +100,7 @@ export async function createCampaign({ admin, name, channel, audience, push, ema
     email: resolvedEmail,
     status: CAMPAIGN_STATUS.DRAFT,
     createdByAdminId: admin.id,
+    ...(repeatConfig ? { repeat: repeatConfig } : {}),
   });
 
   return campaign;
@@ -264,6 +273,84 @@ export async function sendCampaignBatch(campaign) {
   };
 }
 
+/**
+ * Sets or changes a campaign's repeat rule.
+ *
+ * Recomputing `nextRunAt` here rather than waiting for the sweep means an admin
+ * who changes 9am to 7pm sees the new time straight away, instead of wondering
+ * whether it took.
+ */
+export async function setSchedule({ campaignId, repeat }) {
+  const campaign = await getCampaign(campaignId);
+
+  const isRecurring = repeat?.rule && repeat.rule !== CAMPAIGN_REPEAT.NONE;
+  const merged = { ...campaign.repeat, ...repeat, isEnabled: repeat?.isEnabled ?? true };
+
+  const updated = await notificationRepository.updateCampaign(campaignId, {
+    $set: {
+      repeat: isRecurring
+        ? { ...merged, nextRunAt: computeNextRun(merged) }
+        : { ...merged, rule: CAMPAIGN_REPEAT.NONE, nextRunAt: null },
+    },
+  });
+
+  logger.info(
+    { campaignId, schedule: describeSchedule(updated.repeat) },
+    'Campaign schedule updated',
+  );
+
+  return updated;
+}
+
+/**
+ * Starts another run of every recurring campaign whose slot has arrived.
+ *
+ * The audience is recounted each time on purpose: the whole value of a daily
+ * "come back" campaign is that it reaches whoever qualifies *today*, not the
+ * list captured when it was created.
+ */
+export async function startDueRecurringCampaigns() {
+  const due = await notificationRepository.findDueRecurring();
+  if (due.length === 0) return { started: 0 };
+
+  const now = new Date();
+  let started = 0;
+
+  for (const campaign of due) {
+    const filter = await buildAudienceFilter(campaign.audience);
+    const targeted = await notificationRepository.countAudience(filter);
+
+    const nextRunAt = computeNextRun(campaign.repeat, new Date(now.getTime() + 60_000));
+
+    if (targeted === 0) {
+      // Nobody qualifies right now. Skip this run and try again next slot
+      // rather than treating an empty audience as an error.
+      await notificationRepository.updateCampaign(campaign._id, {
+        $set: { 'repeat.lastRunAt': now, 'repeat.nextRunAt': nextRunAt },
+      });
+      logger.info({ campaignId: String(campaign._id) }, 'Recurring campaign skipped: empty audience');
+      continue;
+    }
+
+    const queued = await notificationRepository.requeueRecurring({
+      campaignId: campaign._id,
+      targeted,
+      nextRunAt,
+      now,
+    });
+
+    if (queued) {
+      started += 1;
+      logger.info(
+        { campaignId: String(campaign._id), targeted, nextRunAt },
+        'Recurring campaign queued',
+      );
+    }
+  }
+
+  return { started };
+}
+
 export async function listCampaigns({ status, page, limit }) {
   const { skip, page: safePage, limit: safeLimit } = resolvePagination({ page, limit });
   const filter = status ? { status } : {};
@@ -352,6 +439,8 @@ export async function ensureSystemTemplatesSeeded() {
 }
 
 export const campaignService = {
+  setSchedule,
+  startDueRecurringCampaigns,
   previewAudience,
   createCampaign,
   queueCampaign,

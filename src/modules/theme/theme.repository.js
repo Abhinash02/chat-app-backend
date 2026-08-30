@@ -49,6 +49,28 @@ class ThemeRepository {
   async count() {
     return ThemeModel.countDocuments().exec();
   }
+
+  /** A scheduled theme whose window has opened but which is not live yet. */
+  async findDueToActivate(now = new Date()) {
+    return ThemeModel.findOne({
+      isActive: false,
+      scheduledFrom: { $ne: null, $lte: now },
+      $or: [{ scheduledUntil: null }, { scheduledUntil: { $gte: now } }],
+    })
+      .sort({ scheduledFrom: -1 })
+      .lean()
+      .exec();
+  }
+
+  /** The live theme, if its scheduled window has closed. */
+  async findExpiredActive(now = new Date()) {
+    return ThemeModel.findOne({
+      isActive: true,
+      scheduledUntil: { $ne: null, $lt: now },
+    })
+      .lean()
+      .exec();
+  }
 }
 
 export const themeRepository = new ThemeRepository();

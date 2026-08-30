@@ -7,6 +7,8 @@ import {
   CAMPAIGN_STATUS,
 } from '#src/modules/notifications/notification.constants.js';
 
+// Ten seconds keeps a scheduled send within a minute of its slot without
+// hammering the database when nothing is due.
 const TICK_INTERVAL_MS = 10_000;
 /** A send that has not progressed in this long is assumed dead and requeued. */
 const STUCK_AFTER_MS = 2 * ONE_HOUR_MS;
@@ -32,6 +34,12 @@ export async function runCampaignTick() {
   isRunning = true;
 
   try {
+    // Promote any recurring campaign whose slot has arrived, so it joins the
+    // queue this tick rather than waiting for the next one.
+    await campaignService
+      .startDueRecurringCampaigns()
+      .catch((error) => logger.error({ err: error }, 'Recurring campaign sweep failed'));
+
     const queued = await notificationRepository.findNextQueuedCampaign();
     if (!queued) return { skipped: 'NOTHING_QUEUED' };
 

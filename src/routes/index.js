@@ -4,6 +4,7 @@ import { isDatabaseHealthy } from '#src/config/database.js';
 import { sendSuccess } from '#src/common/utils/response.util.js';
 import { adminRoutes } from '#src/modules/admin/index.js';
 import { authRoutes } from '#src/modules/auth/index.js';
+import { bannerRoutes } from '#src/modules/banners/index.js';
 import { chatRoutes } from '#src/modules/chat/index.js';
 import { coinsRoutes } from '#src/modules/coins/index.js';
 import { gameRoutes } from '#src/modules/games/index.js';
@@ -35,6 +36,7 @@ router.get('/ready', (_req, res) => {
 
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
+router.use('/banners', bannerRoutes);
 router.use('/chat', chatRoutes);
 router.use('/coins', coinsRoutes);
 router.use('/payments', paymentRoutes);

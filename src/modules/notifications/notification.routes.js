@@ -14,6 +14,7 @@ import {
   listCampaignsSchema,
   queueCampaignSchema,
   registerDeviceSchema,
+  setScheduleSchema,
   sendTestSchema,
   templateIdParamSchema,
   templateSchema,
@@ -68,6 +69,11 @@ router.post(
   '/campaigns/:campaignId/send',
   validate({ params: campaignIdParamSchema, body: queueCampaignSchema }),
   notificationController.queueCampaign,
+);
+router.post(
+  '/campaigns/:campaignId/schedule',
+  validate({ params: campaignIdParamSchema, body: setScheduleSchema }),
+  notificationController.setSchedule,
 );
 router.post(
   '/campaigns/:campaignId/cancel',
