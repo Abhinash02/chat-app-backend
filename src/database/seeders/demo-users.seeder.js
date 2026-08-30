@@ -5,6 +5,7 @@ import { coinsService } from '#src/modules/coins/coins.service.js';
 import { COIN_TRANSACTION_TYPE } from '#src/modules/coins/coins.constants.js';
 import { generateAvatar } from '#src/modules/users/avatar.constants.js';
 import { userRepository } from '#src/modules/users/user.repository.js';
+import { UserModel } from '#src/modules/users/user.model.js';
 
 const DEMO_PASSWORD = 'Demo@12345';
 
@@ -19,6 +20,7 @@ const DEMO_PASSWORD = 'Demo@12345';
  * one account alone can never demonstrate discovery or chat.
  */
 const DEMO_USERS = [
+  // Two boys, so you can sign in as one and still see the other side working.
   {
     name: 'Rahul Verma',
     nickname: 'rahul',
@@ -30,13 +32,29 @@ const DEMO_USERS = [
     coins: 200,
   },
   {
+    name: 'Arjun Mehta',
+    nickname: 'arjun',
+    email: 'arjun@demo.app',
+    gender: GENDER.MALE,
+    bio: 'Guitar, road trips, terrible jokes.',
+    interests: ['music', 'travel'],
+    coins: 60,
+  },
+
+  /*
+   * Eight girls, because the discovery grid is two columns and a handful of
+   * cards is the only way to see how it actually behaves — with two, you
+   * cannot tell a working feed from a broken one.
+   *
+   * Girls are never charged, so a coin balance here would be meaningless.
+   */
+  {
     name: 'Priya Sharma',
     nickname: 'priya',
     email: 'priya@demo.app',
     gender: GENDER.FEMALE,
     bio: 'Dancer, reader, and terrible at chess.',
     interests: ['dance', 'books', 'movies'],
-    // Girls are never charged, so a balance here would be meaningless.
     coins: 0,
   },
   {
@@ -48,9 +66,82 @@ const DEMO_USERS = [
     interests: ['coffee', 'photography'],
     coins: 0,
   },
+  {
+    name: 'Aisha Khan',
+    nickname: 'aisha',
+    email: 'aisha@demo.app',
+    gender: GENDER.FEMALE,
+    bio: 'Painting, poetry and late-night playlists.',
+    interests: ['art', 'music'],
+    coins: 0,
+  },
+  {
+    name: 'Sneha Reddy',
+    nickname: 'sneha',
+    email: 'sneha@demo.app',
+    gender: GENDER.FEMALE,
+    bio: 'Foodie. Will judge your biryani.',
+    interests: ['food', 'travel'],
+    coins: 0,
+  },
+  {
+    name: 'Meera Nair',
+    nickname: 'meera',
+    email: 'meera@demo.app',
+    gender: GENDER.FEMALE,
+    bio: 'Runs at 5am. Regrets it by 6.',
+    interests: ['fitness', 'books'],
+    coins: 0,
+  },
+  {
+    name: 'Kavya Iyer',
+    nickname: 'kavya',
+    email: 'kavya@demo.app',
+    gender: GENDER.FEMALE,
+    bio: 'Films, filter coffee, and long arguments about both.',
+    interests: ['movies', 'coffee'],
+    coins: 0,
+  },
+  {
+    name: 'Ananya Bose',
+    nickname: 'ananya',
+    email: 'ananya@demo.app',
+    gender: GENDER.FEMALE,
+    bio: 'Designer by day, gamer by night.',
+    interests: ['design', 'gaming'],
+    coins: 0,
+  },
+  {
+    name: 'Riya Malhotra',
+    nickname: 'riya',
+    email: 'riya@demo.app',
+    gender: GENDER.FEMALE,
+    bio: 'Dogs, dosas, and dramatic weather.',
+    interests: ['pets', 'food'],
+    coins: 0,
+  },
 ];
 
-export async function seedDemoUsers() {
+/**
+ * Marks demo accounts as online.
+ *
+ * Presence is normally reference-counted from live socket connections, and the
+ * server clears it at boot — so this is a deliberate lie, and only worth
+ * telling for accounts that exist to make the UI demonstrable. Restarting the
+ * API resets it; re-run the seeder to set it again.
+ *
+ * It is scoped to `@demo.app` addresses so it can never touch a real account.
+ */
+async function markDemoAccountsOnline() {
+  const result = await UserModel.updateMany(
+    { email: { $regex: '@demo\\.app$' } },
+    { $set: { isOnline: true, lastSeenAt: new Date() } },
+  ).exec();
+
+  return result.modifiedCount;
+}
+
+export async function seedDemoUsers({ markOnline = true } = {}) {
   const created = [];
 
   for (const demo of DEMO_USERS) {
@@ -100,8 +191,10 @@ export async function seedDemoUsers() {
     created.push({ ...demo, existed: false });
   }
 
-  logger.info({ count: created.length }, 'Demo accounts ready');
-  return { users: created, password: DEMO_PASSWORD };
+  const onlineCount = markOnline ? await markDemoAccountsOnline() : 0;
+
+  logger.info({ count: created.length, onlineCount }, 'Demo accounts ready');
+  return { users: created, password: DEMO_PASSWORD, onlineCount };
 }
 
 export { DEMO_PASSWORD, DEMO_USERS };
