@@ -7,7 +7,15 @@ import { roomRepository } from '#src/modules/rooms/room.repository.js';
 import { themeService } from '#src/modules/theme/theme.service.js';
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000;
-const ROOM_IDLE_HOURS = 2;
+/*
+ * How long an empty room is kept before it is collected.
+ *
+ * Long enough that a host who backgrounded the app, lost signal or took a
+ * call can come back to it; short enough that abandoned rooms do not pile up
+ * in the list. A dropped socket no longer closes a room, so this is the only
+ * thing that ever cleans one up automatically.
+ */
+const ROOM_IDLE_HOURS = 1;
 
 /**
  * Sweeps state that nothing else will clean up:

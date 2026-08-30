@@ -371,11 +371,33 @@ export async function kickParticipant({ user, roomId, targetUserId }) {
 }
 
 /** Called on socket disconnect so a dropped phone does not leave a ghost seat. */
+/**
+ * Cleans up after a socket drops.
+ *
+ * A disconnect is not the same as leaving. Backgrounding the app, a tunnel, a
+ * screen change — all of these drop the socket, and treating the host's as
+ * "the host left" destroyed rooms seconds after they were created. That was
+ * the bug: a room appeared to vanish the moment its creator glanced away.
+ *
+ * So a dropped socket removes the participant but never closes the room. Only
+ * an explicit leave or close does that, and the housekeeping sweep collects
+ * rooms that sit empty. A host who reconnects finds their room still standing.
+ */
 export async function handleUserDisconnected(userId) {
   const rooms = await roomRepository.findRoomsContainingUser(userId);
 
   for (const room of rooms) {
-    await leaveRoom({ user: { id: userId }, roomId: room._id });
+    await roomRepository.removeParticipant({ roomId: room._id, userId });
+
+    const populated = await roomRepository.findPopulatedById(room._id);
+    if (!populated) continue;
+
+    const dto = toRoomDto(populated, userId);
+    emitToRoom(room._id, SOCKET_EVENT.ROOM_PARTICIPANTS, {
+      roomId: String(room._id),
+      participants: dto.participants,
+      participantCount: dto.participantCount,
+    });
   }
 
   return rooms.length;
