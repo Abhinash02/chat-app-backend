@@ -1,4 +1,5 @@
 import { logger } from '#src/config/logger.js';
+import { guardJob } from '#src/jobs/guard.js';
 import { ONE_HOUR_MS } from '#src/common/utils/date.util.js';
 import { paymentRepository } from '#src/modules/payments/payment.repository.js';
 import { ORDER_EXPIRY_MINUTES } from '#src/modules/payments/payment.constants.js';
@@ -45,9 +46,8 @@ export async function runHousekeeping() {
 }
 
 export function startHousekeepingScheduler() {
-  const timer = setInterval(() => {
-    runHousekeeping().catch((error) => logger.error({ err: error }, 'Housekeeping job failed'));
-  }, CHECK_INTERVAL_MS);
+  const tick = guardJob('housekeeping', runHousekeeping);
+  const timer = setInterval(tick, CHECK_INTERVAL_MS);
 
   timer.unref();
   return timer;

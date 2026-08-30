@@ -1,5 +1,7 @@
 import { ONE_HOUR_MS } from '#src/common/utils/date.util.js';
 import { logger } from '#src/config/logger.js';
+import { guardJob } from '#src/jobs/guard.js';
+import { isDatabaseUnreachable } from '#src/common/utils/error.util.js';
 import { campaignService } from '#src/modules/notifications/campaign.service.js';
 import { notificationRepository } from '#src/modules/notifications/notification.repository.js';
 import {
@@ -84,6 +86,10 @@ export async function runCampaignTick() {
 
     return { completed: true, processed, stats: finished.stats };
   } catch (error) {
+    // Connectivity failures are re-thrown so the guard can collapse them into
+    // a single line; anything else is a real fault worth the full trace.
+    if (isDatabaseUnreachable(error)) throw error;
+
     logger.error({ err: error }, 'Campaign worker failed');
     return { failed: true };
   } finally {
@@ -103,9 +109,8 @@ export function startCampaignWorker() {
     })
     .catch((error) => logger.error({ err: error }, 'Failed to requeue stuck campaigns'));
 
-  const timer = setInterval(() => {
-    runCampaignTick().catch((error) => logger.error({ err: error }, 'Campaign tick threw'));
-  }, TICK_INTERVAL_MS);
+  const tick = guardJob('campaign-worker', runCampaignTick);
+  const timer = setInterval(tick, TICK_INTERVAL_MS);
 
   timer.unref();
   return timer;

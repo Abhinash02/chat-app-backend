@@ -1,5 +1,6 @@
 import { ONE_HOUR_MS } from '#src/common/utils/date.util.js';
 import { logger } from '#src/config/logger.js';
+import { guardJob } from '#src/jobs/guard.js';
 import { emitToUser } from '#src/realtime/emitter.js';
 import { SOCKET_EVENT } from '#src/realtime/events.js';
 import { walletRepository } from '#src/modules/coins/wallet.repository.js';
@@ -58,11 +59,8 @@ export async function notifyReadyDailyBonuses() {
 }
 
 export function startDailyBonusScheduler() {
-  const timer = setInterval(() => {
-    notifyReadyDailyBonuses().catch((error) =>
-      logger.error({ err: error }, 'Daily bonus notification job failed'),
-    );
-  }, CHECK_INTERVAL_MS);
+  const tick = guardJob('daily-bonus', notifyReadyDailyBonuses);
+  const timer = setInterval(tick, CHECK_INTERVAL_MS);
 
   // Never hold the process open just for this timer.
   timer.unref();

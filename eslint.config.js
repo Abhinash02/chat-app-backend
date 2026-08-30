@@ -32,4 +32,10 @@ export default [
       'object-shorthand': 'error',
     },
   },
+  {
+    // CLI scripts talk to the operator through stdout — that is the interface,
+    // not a stray debug statement.
+    files: ['scripts/**/*.js'],
+    rules: { 'no-console': 'off' },
+  },
 ];

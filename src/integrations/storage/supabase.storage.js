@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 
 import { createClient } from '@supabase/supabase-js';
 
+import { BadRequestError } from '#src/common/errors/index.js';
 import { env } from '#src/config/env.js';
 import { logger } from '#src/config/logger.js';
 import { extensionFor } from '#src/integrations/storage/storage.provider.js';
@@ -39,8 +40,29 @@ export const supabaseStorageProvider = {
     });
 
     if (error) {
-      logger.error({ err: error, key }, 'Supabase upload failed');
-      throw new Error(`Supabase upload failed: ${error.message}`);
+      logger.error({ err: error, key, bucket: env.SUPABASE_STORAGE_BUCKET }, 'Supabase upload failed');
+
+      /*
+       * A misconfigured provider is an operator problem, not a server fault, so
+       * it gets a message that names the fix rather than collapsing into a
+       * generic 500. Getting this wrong costs someone an afternoon reading
+       * stack traces to discover they never made the bucket.
+       */
+      if (error.message?.includes('Bucket not found') || error.statusCode === '404') {
+        throw new BadRequestError(
+          `The Supabase bucket "${env.SUPABASE_STORAGE_BUCKET}" does not exist. Create it in Storage and mark it public, or change SUPABASE_STORAGE_BUCKET.`,
+          'STORAGE_BUCKET_MISSING',
+        );
+      }
+
+      if (error.statusCode === '403' || error.message?.toLowerCase().includes('unauthorized')) {
+        throw new BadRequestError(
+          'Supabase rejected the upload. Check SUPABASE_SERVICE_ROLE_KEY is the service role key, not the anon key.',
+          'STORAGE_UNAUTHORISED',
+        );
+      }
+
+      throw new BadRequestError(`Upload failed: ${error.message}`, 'STORAGE_UPLOAD_FAILED');
     }
 
     const { data } = bucket.getPublicUrl(key);

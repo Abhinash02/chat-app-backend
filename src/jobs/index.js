@@ -1,4 +1,5 @@
 import { logger } from '#src/config/logger.js';
+import { guardJob } from '#src/jobs/guard.js';
 import { startCampaignWorker } from '#src/jobs/workers/campaign.worker.js';
 import { startDailyBonusScheduler } from '#src/jobs/schedulers/daily-bonus.scheduler.js';
 import { startHousekeepingScheduler } from '#src/jobs/schedulers/housekeeping.scheduler.js';
@@ -22,3 +23,5 @@ export function stopSchedulers() {
   for (const timer of timers) clearInterval(timer);
   timers = [];
 }
+
+export { guardJob };
