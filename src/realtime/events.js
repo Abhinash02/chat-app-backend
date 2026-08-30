@@ -35,6 +35,10 @@ export const SOCKET_EVENT = Object.freeze({
   ROOM_VOICE_STATE: 'room:voice:state',
   ROOM_CLOSED: 'room:closed',
 
+  // Status / stories
+  STATUS_NEW: 'status:new',
+  STATUS_VIEWED: 'status:viewed',
+
   // Games
   LEADERBOARD_UPDATED: 'leaderboard:updated',
 

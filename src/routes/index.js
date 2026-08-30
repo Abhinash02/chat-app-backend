@@ -13,6 +13,7 @@ import { paymentRoutes } from '#src/modules/payments/index.js';
 import { reportRoutes } from '#src/modules/reports/index.js';
 import { roomRoutes } from '#src/modules/rooms/index.js';
 import { settingsRoutes } from '#src/modules/settings/index.js';
+import { statusRoutes } from '#src/modules/status/index.js';
 import { themeRoutes } from '#src/modules/theme/index.js';
 import { userRoutes } from '#src/modules/users/index.js';
 
@@ -41,6 +42,7 @@ router.use('/chat', chatRoutes);
 router.use('/coins', coinsRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/rooms', roomRoutes);
+router.use('/status', statusRoutes);
 router.use('/games', gameRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/reports', reportRoutes);
