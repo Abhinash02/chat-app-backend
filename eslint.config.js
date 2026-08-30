@@ -35,7 +35,8 @@ export default [
   {
     // CLI scripts talk to the operator through stdout — that is the interface,
     // not a stray debug statement.
-    files: ['scripts/**/*.js'],
+    // Startup failures are read at a terminal, so stderr is the interface.
+    files: ['scripts/**/*.js', 'src/server.js'],
     rules: { 'no-console': 'off' },
   },
 ];

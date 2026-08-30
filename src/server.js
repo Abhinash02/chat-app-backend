@@ -26,7 +26,49 @@ async function bootstrap() {
 
   startSchedulers();
 
-  await new Promise((resolve) => httpServer.listen(env.PORT, resolve));
+  /*
+   * A port clash is the most common way starting this fails, and it is always
+   * a two-second fix — but Node reports it as a bare stack trace ending in
+   * `errno: -98`, which says nothing about what to do. Translating it here
+   * costs one listener and saves the reader a search.
+   */
+  await new Promise((resolve, reject) => {
+    httpServer.once('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        reject(
+          Object.assign(
+            new Error(
+              `Port ${env.PORT} is already in use — most likely another copy of this server.\n` +
+                `  Find it:  lsof -i :${env.PORT}      (macOS/Linux)   netstat -ano | findstr :${env.PORT}   (Windows)\n` +
+                `  Or run on a different port:  PORT=5001 npm run dev`,
+            ),
+            // Flags an error whose message already says everything useful, so
+            // the handler prints it plainly instead of adding a stack trace
+            // that points at this line rather than at the cause.
+            { isExplained: true },
+          ),
+        );
+        return;
+      }
+
+      if (error.code === 'EACCES') {
+        reject(
+          Object.assign(
+            new Error(
+              `Not allowed to bind port ${env.PORT}. Ports below 1024 need elevated rights — ` +
+                'try PORT=5000 npm run dev.',
+            ),
+            { isExplained: true },
+          ),
+        );
+        return;
+      }
+
+      reject(error);
+    });
+
+    httpServer.listen(env.PORT, resolve);
+  });
   logger.info({ port: env.PORT, env: env.NODE_ENV, api: env.API_PREFIX }, 'Server listening');
 
   return { httpServer, io };
@@ -84,6 +126,17 @@ function registerShutdownHandlers({ httpServer, io }) {
 bootstrap()
   .then(registerShutdownHandlers)
   .catch((error) => {
-    logger.fatal({ err: error }, 'Failed to start server');
+    /*
+     * A startup failure is read by a person at a terminal, not scraped from a
+     * log aggregator. When we already know what went wrong and how to fix it,
+     * the message alone is more useful than a stack trace pointing at the
+     * line that threw. Anything unexpected still gets the full trace.
+     */
+    if (error.isExplained) {
+      console.error(`\nCould not start: ${error.message}\n`);
+    } else {
+      logger.fatal({ err: error }, 'Failed to start server');
+    }
+
     process.exit(1);
   });
