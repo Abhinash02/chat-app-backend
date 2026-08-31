@@ -6,6 +6,8 @@ import { userService } from '#src/modules/users/user.service.js';
 import { userRepository } from '#src/modules/users/user.repository.js';
 import { reportRepository } from '#src/modules/reports/report.repository.js';
 import { REPORT_STATUS } from '#src/modules/reports/report.constants.js';
+import { emitToAdmin } from '#src/realtime/emitter.js';
+import { SOCKET_EVENT } from '#src/realtime/events.js';
 
 const SNAPSHOT_MESSAGE_COUNT = 20;
 
@@ -94,6 +96,9 @@ export async function createReport({ user, reportedUserId, reason, details, conv
     'User report filed',
   );
 
+  const totalOpen = await reportRepository.countOpen();
+  emitToAdmin(SOCKET_EVENT.ADMIN_REPORT_NEW, { reportId: String(report._id), totalOpen });
+
   return {
     report: toReportDto(report),
     blocked: alsoBlock,
@@ -108,8 +113,20 @@ export async function listReports({ status, page, limit }) {
 
   const { items, total } = await reportRepository.list({ filter, skip, limit: safeLimit });
 
+  const reportsWithCounts = await Promise.all(
+    items.map(async (item) => {
+      const dto = toReportDto(item);
+      if (item.reportedUserId?._id) {
+        dto.totalUserReports = await reportRepository.countDistinctReportersFor(item.reportedUserId._id);
+      } else {
+        dto.totalUserReports = 1;
+      }
+      return dto;
+    }),
+  );
+
   return {
-    items: items.map(toReportDto),
+    items: reportsWithCounts,
     meta: buildPaginationMeta({ page: safePage, limit: safeLimit, total }),
   };
 }
@@ -127,6 +144,9 @@ export async function reviewReport({ reportId, adminId, status, reviewNote }) {
 
   const updated = await reportRepository.updateStatus({ reportId, status, adminId, reviewNote });
   if (!updated) throw new NotFoundError('Report not found', 'REPORT_NOT_FOUND');
+
+  const totalOpen = await reportRepository.countOpen();
+  emitToAdmin(SOCKET_EVENT.ADMIN_REPORT_UPDATED, { reportId: String(reportId), status, totalOpen });
 
   return toReportDto(updated);
 }

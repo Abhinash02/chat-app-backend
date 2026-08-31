@@ -81,6 +81,15 @@ export async function getPublicSettings() {
       upiQrImageUrl: settings.payments.upiQrImageUrl,
       supportEmail: settings.payments.supportEmail,
     },
+    appVersion: settings.appVersion ?? {
+      latestVersion: '1.0.0',
+      minimumVersion: '1.0.0',
+      latestVersionCode: 1,
+      forceUpdate: false,
+      playStoreUrl: 'https://play.google.com/store/apps/details?id=app.vibechat.mobile',
+      appStoreUrl: 'https://apps.apple.com/app/id123456789',
+      updateMessage: 'A new version of Vibe is available with performance improvements!',
+    },
   };
 }
 

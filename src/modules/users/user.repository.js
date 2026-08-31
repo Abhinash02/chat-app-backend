@@ -231,6 +231,58 @@ class UserRepository {
     return rows.map((row) => row._id);
   }
 
+  /** Detailed list of users who blocked this user. */
+  async findUsersBlockingUser(userId) {
+    return UserModel.find({ blockedUserIds: userId })
+      .select('nickname avatarUrl avatarEmoji avatarColor gender bio')
+      .lean()
+      .exec();
+  }
+
+  async addFollowingUser(userId, targetUserId) {
+    return UserModel.findByIdAndUpdate(
+      userId,
+      { $addToSet: { followingUserIds: targetUserId } },
+      { new: true },
+    )
+      .select('followingUserIds')
+      .exec();
+  }
+
+  async removeFollowingUser(userId, targetUserId) {
+    return UserModel.findByIdAndUpdate(
+      userId,
+      { $pull: { followingUserIds: targetUserId } },
+      { new: true },
+    )
+      .select('followingUserIds')
+      .exec();
+  }
+
+  async countFollowers(userId) {
+    return UserModel.countDocuments({ followingUserIds: userId }).exec();
+  }
+
+  async countFollowing(userId) {
+    const user = await UserModel.findById(userId).select('followingUserIds').lean().exec();
+    return user?.followingUserIds?.length ?? 0;
+  }
+
+  async findFollowers(userId) {
+    return UserModel.find({ followingUserIds: userId })
+      .select('nickname avatarUrl avatarEmoji avatarColor gender bio isOnline lastSeenAt')
+      .lean()
+      .exec();
+  }
+
+  async findFollowing(userId) {
+    const user = await UserModel.findById(userId)
+      .populate('followingUserIds', 'nickname avatarUrl avatarEmoji avatarColor gender bio isOnline lastSeenAt')
+      .lean()
+      .exec();
+    return user?.followingUserIds ?? [];
+  }
+
   async incrementGamePoints(userId, points, { session } = {}) {
     return UserModel.findByIdAndUpdate(
       userId,

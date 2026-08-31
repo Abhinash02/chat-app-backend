@@ -26,9 +26,11 @@ const DEMO_USERS = [
     nickname: 'rahul',
     email: 'rahul@demo.app',
     gender: GENDER.MALE,
+    ageGroup: '22-25',
+    zodiacSign: 'Leo ♌',
+    city: 'Mumbai',
     bio: 'Cricket, biryani and long conversations.',
     interests: ['cricket', 'music', 'travel'],
-    // Enough to exercise the billing path without immediately running dry.
     coins: 200,
   },
   {
@@ -36,6 +38,9 @@ const DEMO_USERS = [
     nickname: 'arjun',
     email: 'arjun@demo.app',
     gender: GENDER.MALE,
+    ageGroup: '26-29',
+    zodiacSign: 'Aries ♈',
+    city: 'Bengaluru',
     bio: 'Guitar, road trips, terrible jokes.',
     interests: ['music', 'travel'],
     coins: 60,
@@ -43,16 +48,16 @@ const DEMO_USERS = [
 
   /*
    * Eight girls, because the discovery grid is two columns and a handful of
-   * cards is the only way to see how it actually behaves — with two, you
-   * cannot tell a working feed from a broken one.
-   *
-   * Girls are never charged, so a coin balance here would be meaningless.
+   * cards is the only way to see how it actually behaves.
    */
   {
     name: 'Priya Sharma',
     nickname: 'priya',
     email: 'priya@demo.app',
     gender: GENDER.FEMALE,
+    ageGroup: '18-21',
+    zodiacSign: 'Scorpio ♏',
+    city: 'Delhi',
     bio: 'Dancer, reader, and terrible at chess.',
     interests: ['dance', 'books', 'movies'],
     coins: 0,
@@ -62,6 +67,9 @@ const DEMO_USERS = [
     nickname: 'neha',
     email: 'neha@demo.app',
     gender: GENDER.FEMALE,
+    ageGroup: '22-25',
+    zodiacSign: 'Gemini ♊',
+    city: 'Mumbai',
     bio: 'Coffee first, conversation second.',
     interests: ['coffee', 'photography'],
     coins: 0,
@@ -71,6 +79,9 @@ const DEMO_USERS = [
     nickname: 'aisha',
     email: 'aisha@demo.app',
     gender: GENDER.FEMALE,
+    ageGroup: '18-21',
+    zodiacSign: 'Cancer ♋',
+    city: 'Hyderabad',
     bio: 'Painting, poetry and late-night playlists.',
     interests: ['art', 'music'],
     coins: 0,
@@ -80,6 +91,9 @@ const DEMO_USERS = [
     nickname: 'sneha',
     email: 'sneha@demo.app',
     gender: GENDER.FEMALE,
+    ageGroup: '22-25',
+    zodiacSign: 'Libra ♎',
+    city: 'Bengaluru',
     bio: 'Foodie. Will judge your biryani.',
     interests: ['food', 'travel'],
     coins: 0,
@@ -89,6 +103,9 @@ const DEMO_USERS = [
     nickname: 'meera',
     email: 'meera@demo.app',
     gender: GENDER.FEMALE,
+    ageGroup: '26-29',
+    zodiacSign: 'Capricorn ♑',
+    city: 'Kochi',
     bio: 'Runs at 5am. Regrets it by 6.',
     interests: ['fitness', 'books'],
     coins: 0,
@@ -98,6 +115,9 @@ const DEMO_USERS = [
     nickname: 'kavya',
     email: 'kavya@demo.app',
     gender: GENDER.FEMALE,
+    ageGroup: '22-25',
+    zodiacSign: 'Virgo ♍',
+    city: 'Chennai',
     bio: 'Films, filter coffee, and long arguments about both.',
     interests: ['movies', 'coffee'],
     coins: 0,
@@ -107,6 +127,9 @@ const DEMO_USERS = [
     nickname: 'ananya',
     email: 'ananya@demo.app',
     gender: GENDER.FEMALE,
+    ageGroup: '18-21',
+    zodiacSign: 'Aquarius ♒',
+    city: 'Kolkata',
     bio: 'Designer by day, gamer by night.',
     interests: ['design', 'gaming'],
     coins: 0,
@@ -116,6 +139,9 @@ const DEMO_USERS = [
     nickname: 'riya',
     email: 'riya@demo.app',
     gender: GENDER.FEMALE,
+    ageGroup: '22-25',
+    zodiacSign: 'Taurus ♉',
+    city: 'Pune',
     bio: 'Dogs, dosas, and dramatic weather.',
     interests: ['pets', 'food'],
     coins: 0,
@@ -124,13 +150,6 @@ const DEMO_USERS = [
 
 /**
  * Marks demo accounts as online.
- *
- * Presence is normally reference-counted from live socket connections, and the
- * server clears it at boot — so this is a deliberate lie, and only worth
- * telling for accounts that exist to make the UI demonstrable. Restarting the
- * API resets it; re-run the seeder to set it again.
- *
- * It is scoped to `@demo.app` addresses so it can never touch a real account.
  */
 async function markDemoAccountsOnline() {
   const result = await UserModel.updateMany(
@@ -148,13 +167,15 @@ export async function seedDemoUsers({ markOnline = true } = {}) {
     const existing = await userRepository.findByEmail(demo.email);
 
     if (existing) {
-      // Never overwrite a live account, but do make sure it is usable: a demo
-      // account that drifted into `pending_verification` defeats the purpose.
-      if (existing.status !== USER_STATUS.ACTIVE) {
-        await userRepository.updateById(existing._id, {
-          $set: { status: USER_STATUS.ACTIVE, emailVerifiedAt: new Date() },
-        });
-      }
+      await userRepository.updateById(existing._id, {
+        $set: {
+          status: USER_STATUS.ACTIVE,
+          emailVerifiedAt: new Date(),
+          ageGroup: demo.ageGroup,
+          zodiacSign: demo.zodiacSign,
+          'location.city': demo.city,
+        },
+      });
 
       created.push({ ...demo, existed: true });
       continue;
@@ -167,8 +188,11 @@ export async function seedDemoUsers({ markOnline = true } = {}) {
       nickname: demo.nickname,
       email: demo.email,
       gender: demo.gender,
+      ageGroup: demo.ageGroup,
+      zodiacSign: demo.zodiacSign,
       bio: demo.bio,
       interests: demo.interests,
+      location: { city: demo.city },
       passwordHash: await hashPassword(DEMO_PASSWORD),
       status: USER_STATUS.ACTIVE,
       emailVerifiedAt: new Date(),

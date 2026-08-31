@@ -23,8 +23,8 @@ const envSchema = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
-  JWT_ACCESS_TTL: z.string().default('15m'),
-  JWT_REFRESH_TTL: z.string().default('30d'),
+  JWT_ACCESS_TTL: z.string().default('7d'),
+  JWT_REFRESH_TTL: z.string().default('90d'),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
 
   SMTP_HOST: z.string().optional().default(''),

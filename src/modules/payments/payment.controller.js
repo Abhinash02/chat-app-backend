@@ -72,4 +72,50 @@ export const paymentController = {
     });
     return sendSuccess(res, order);
   }),
+
+  refundOrder: asyncHandler(async (req, res) => {
+    const order = await paymentService.refundOrder({
+      orderId: req.params.orderId,
+      adminId: req.user.id,
+      ...req.body,
+    });
+    return sendSuccess(res, order);
+  }),
+
+  // ----- Redeem Codes & Vouchers -----------------------------------------
+
+  redeemCode: asyncHandler(async (req, res) => {
+    const result = await paymentService.redeemCode({
+      code: req.body.code,
+      user: req.user,
+    });
+    return sendSuccess(res, result);
+  }),
+
+  validateCoupon: asyncHandler(async (req, res) => {
+    const result = await paymentService.validateCoupon({
+      code: req.body.code,
+      user: req.user,
+      packagePriceInRupees: Number(req.body.priceInRupees) || 0,
+    });
+    return sendSuccess(res, result);
+  }),
+
+  createRedeemCode: asyncHandler(async (req, res) => {
+    const result = await paymentService.createRedeemCode({
+      ...req.body,
+      adminId: req.user.id,
+    });
+    return sendCreated(res, result);
+  }),
+
+  listRedeemCodes: asyncHandler(async (req, res) => {
+    const result = await paymentService.listRedeemCodesForAdmin(req.query);
+    return sendSuccess(res, result.items, { meta: result.meta });
+  }),
+
+  deleteRedeemCode: asyncHandler(async (req, res) => {
+    const result = await paymentService.deleteRedeemCode(req.params.id);
+    return sendSuccess(res, result);
+  }),
 };

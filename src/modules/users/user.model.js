@@ -66,6 +66,8 @@ const userSchema = new mongoose.Schema(
     avatarEmoji: { type: String, default: null },
     avatarColor: { type: String, default: null },
     bio: { type: String, trim: true, maxlength: 240, default: '' },
+    ageGroup: { type: String, trim: true, default: '18-21' },
+    zodiacSign: { type: String, trim: true, default: null },
     interests: { type: [String], default: [] },
 
     emailVerifiedAt: { type: Date, default: null },
@@ -84,6 +86,7 @@ const userSchema = new mongoose.Schema(
     gamePoints: { type: Number, default: 0, min: 0, index: true },
 
     blockedUserIds: { type: [mongoose.Schema.Types.ObjectId], ref: 'User', default: [] },
+    followingUserIds: { type: [mongoose.Schema.Types.ObjectId], ref: 'User', default: [] },
 
     suspendedReason: { type: String, default: null },
     lastLoginAt: { type: Date, default: null },

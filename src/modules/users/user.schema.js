@@ -20,6 +20,8 @@ export const updateProfileSchema = z
       .regex(/^[a-zA-Z0-9_.]+$/, 'Nickname can only contain letters, numbers, dots and underscores')
       .optional(),
     bio: z.string().trim().max(240).optional(),
+    ageGroup: z.string().trim().max(30).optional().nullable(),
+    zodiacSign: z.string().trim().max(40).optional().nullable(),
     interests: z.array(z.string().trim().min(1).max(30)).max(10).optional(),
     preferences: z
       .object({
@@ -40,8 +42,8 @@ export const updateLocationSchema = z
   .object({
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
-    city: z.string().trim().max(120).optional(),
-    country: z.string().trim().max(120).optional(),
+    city: z.string().trim().max(120).optional().nullable(),
+    country: z.string().trim().max(120).optional().nullable(),
   })
   .strict();
 

@@ -3,9 +3,10 @@ export const SOCKET_EVENT = Object.freeze({
   // Connection lifecycle
   READY: 'connection:ready',
 
-  // Presence
+  // Presence & User
   PRESENCE_UPDATED: 'presence:updated',
   PRESENCE_SUBSCRIBE: 'presence:subscribe',
+  FOLLOW_UPDATED: 'user:follow:updated',
 
   // Chat
   CONVERSATION_JOIN: 'conversation:join',
@@ -50,6 +51,12 @@ export const SOCKET_EVENT = Object.freeze({
   SETTINGS_UPDATED: 'settings:updated',
   FORCE_LOGOUT: 'account:force-logout',
   ACCOUNT_SUSPENDED: 'account:suspended',
+  ADMIN_REPORT_NEW: 'admin:report:new',
+  ADMIN_REPORT_UPDATED: 'admin:report:updated',
+  ADMIN_FEEDBACK_NEW: 'admin:feedback:new',
+  ADMIN_FEEDBACK_UPDATED: 'admin:feedback:updated',
+  ADMIN_PAYMENT_NEW: 'admin:payment:new',
+  ADMIN_PAYMENT_UPDATED: 'admin:payment:updated',
 
   // Generic error channel
   ERROR: 'app:error',

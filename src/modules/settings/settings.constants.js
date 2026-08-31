@@ -71,4 +71,13 @@ export const DEFAULT_SETTINGS = Object.freeze({
     profanityFilterEnabled: true,
     blockedWords: [],
   },
+  appVersion: {
+    latestVersion: '1.0.0',
+    minimumVersion: '1.0.0',
+    latestVersionCode: 1,
+    forceUpdate: false,
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=app.vibechat.mobile',
+    appStoreUrl: 'https://apps.apple.com/app/id123456789',
+    updateMessage: 'A new and improved version of Vibe is available. Update now for the best experience!',
+  },
 });

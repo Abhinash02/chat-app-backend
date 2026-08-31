@@ -13,6 +13,7 @@ import {
   listOrdersSchema,
   manualProofSchema,
   orderIdParamSchema,
+  refundOrderSchema,
   rejectOrderSchema,
   verifyPaymentSchema,
 } from '#src/modules/payments/payment.schema.js';
@@ -35,7 +36,12 @@ router.post(
   paymentController.submitManualProof,
 );
 
-// ----- Admin review of manual transfers ----------------------------------
+// ----- Redeem Codes & Discount Coupons ---------------------------------
+
+router.post('/redeem', paymentController.redeemCode);
+router.post('/coupon/validate', paymentController.validateCoupon);
+
+// ----- Admin review, refunds & redeem codes ------------------------------
 
 router.get('/admin/orders', requireAdmin, validate({ query: listOrdersSchema }), paymentController.listOrders);
 router.post(
@@ -50,5 +56,15 @@ router.post(
   validate({ params: orderIdParamSchema, body: rejectOrderSchema }),
   paymentController.rejectOrder,
 );
+router.post(
+  '/admin/orders/:orderId/refund',
+  requireAdmin,
+  validate({ params: orderIdParamSchema, body: refundOrderSchema }),
+  paymentController.refundOrder,
+);
+
+router.get('/admin/redeem-codes', requireAdmin, paymentController.listRedeemCodes);
+router.post('/admin/redeem-codes', requireAdmin, paymentController.createRedeemCode);
+router.delete('/admin/redeem-codes/:id', requireAdmin, paymentController.deleteRedeemCode);
 
 export const paymentRoutes = router;

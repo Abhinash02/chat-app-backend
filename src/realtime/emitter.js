@@ -57,6 +57,15 @@ export function emitToConversation(conversationId, event, payload) {
   return safeEmit(io.to(conversationRoom(conversationId)), event, payload);
 }
 
+export function adminRoom() {
+  return 'admin:channel';
+}
+
+export function emitToAdmin(event, payload) {
+  if (!io) return safeEmit(null, event, payload);
+  return safeEmit(io.to(adminRoom()), event, payload);
+}
+
 export function emitToRoom(roomId, event, payload) {
   if (!io) return safeEmit(null, event, payload);
   return safeEmit(io.to(chatRoomChannel(roomId)), event, payload);

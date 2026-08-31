@@ -396,8 +396,8 @@ export async function sendRoomMedia({ user, roomId, file, caption = '' }) {
 export async function listRoomMessages({ user, roomId, limit, before }) {
   const room = await loadLiveRoom(roomId);
 
-  if (!isParticipant(room, user.id)) {
-    throw new ForbiddenError('Join the room to read the chat', 'NOT_IN_ROOM');
+  if (room.isPrivate && !isParticipant(room, user.id)) {
+    throw new ForbiddenError('Join the room with the passcode to read the chat', 'NOT_IN_ROOM');
   }
 
   const result = await roomRepository.listMessages({

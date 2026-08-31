@@ -16,6 +16,8 @@ import { settingsService } from '#src/modules/settings/settings.service.js';
 import { userRepository } from '#src/modules/users/user.repository.js';
 import { paymentRepository } from '#src/modules/payments/payment.repository.js';
 import { ORDER_EXPIRY_MINUTES, PAYMENT_STATUS } from '#src/modules/payments/payment.constants.js';
+import { emitToAdmin } from '#src/realtime/emitter.js';
+import { SOCKET_EVENT } from '#src/realtime/events.js';
 
 function toOrderDto(order) {
   return {
@@ -30,8 +32,12 @@ function toOrderDto(order) {
     provider: order.provider,
     status: order.status,
     providerOrderId: order.providerOrderId,
+    providerPaymentId: order.providerPaymentId,
+    providerRefundId: order.providerRefundId,
     creditedAt: order.creditedAt,
     rejectionReason: order.rejectionReason,
+    refundReason: order.refundReason,
+    refundedAt: order.refundedAt,
     createdAt: order.createdAt,
   };
 }
@@ -313,6 +319,7 @@ export async function submitManualPaymentProof({ user, orderId, utr, note }) {
   });
 
   logger.info({ orderId: String(order._id) }, 'Manual UPI proof submitted');
+  emitToAdmin(SOCKET_EVENT.ADMIN_PAYMENT_NEW, { orderId: String(order._id) });
   return toOrderDto(updated);
 }
 
@@ -334,6 +341,7 @@ export async function approveManualPayment({ orderId, adminId }) {
   await creditOrder(paid);
 
   logger.info({ orderId: String(order._id), adminId }, 'Manual payment approved');
+  emitToAdmin(SOCKET_EVENT.ADMIN_PAYMENT_UPDATED, { orderId: String(order._id), status: 'paid' });
   return { order: toOrderDto(paid), alreadyCredited: false };
 }
 
@@ -350,7 +358,359 @@ export async function rejectManualPayment({ orderId, adminId, reason }) {
   });
 
   logger.info({ orderId: String(order._id), adminId }, 'Manual payment rejected');
+  emitToAdmin(SOCKET_EVENT.ADMIN_PAYMENT_UPDATED, { orderId: String(order._id), status: 'rejected' });
   return toOrderDto(updated);
+}
+
+export async function refundOrder({ orderId, adminId, reason }) {
+  const order = await paymentRepository.findById(orderId);
+  if (!order) throw new NotFoundError('Order not found', 'ORDER_NOT_FOUND');
+
+  if (order.status === PAYMENT_STATUS.REFUNDED) {
+    throw new ConflictError('This order has already been refunded', 'ORDER_ALREADY_REFUNDED');
+  }
+
+  if (order.status !== PAYMENT_STATUS.PAID) {
+    throw new BadRequestError('Only paid orders can be refunded', 'ORDER_NOT_PAID');
+  }
+
+  let providerRefundId = null;
+  // If Razorpay, trigger gateway refund
+  if (order.provider === PAYMENT_PROVIDER.RAZORPAY && order.providerPaymentId && razorpayGateway.isConfigured) {
+    try {
+      const refundResult = await razorpayGateway.refundPayment({
+        paymentId: order.providerPaymentId,
+        amountInPaise: order.amountInPaise,
+        notes: { reason: reason || 'Admin initiated refund', orderId: String(order._id) },
+      });
+      providerRefundId = refundResult?.id ?? null;
+      logger.info({ orderId: String(order._id), providerRefundId }, 'Razorpay refund issued');
+    } catch (err) {
+      logger.error({ err, orderId: String(order._id) }, 'Razorpay refund API call failed');
+      throw new BadRequestError(err?.message || 'Razorpay refund failed', 'RAZORPAY_REFUND_FAILED');
+    }
+  }
+
+  // Deduct/reverse the coins from user wallet if credited
+  if (order.creditedAt) {
+    try {
+      const user = await userRepository.findById(order.userId);
+      if (user) {
+        await coinsService.adjustBalance({
+          userId: order.userId,
+          gender: user.gender,
+          amount: -(order.coins + order.bonusCoins),
+          reason: `Refund for Order #${order._id}: ${reason || 'Customer refund'}`,
+          adminId,
+        });
+      }
+    } catch (coinErr) {
+      logger.warn({ coinErr, orderId: String(order._id) }, 'Failed to debit coins on refund');
+    }
+  }
+
+  const updated = await paymentRepository.updateById(order._id, {
+    $set: {
+      status: PAYMENT_STATUS.REFUNDED,
+      refundReason: reason || 'Admin refunded',
+      refundedAt: new Date(),
+      refundedByAdminId: adminId,
+      providerRefundId,
+    },
+  });
+
+  logger.info({ orderId: String(order._id), adminId }, 'Order marked as refunded');
+  emitToAdmin(SOCKET_EVENT.ADMIN_PAYMENT_UPDATED, { orderId: String(order._id), status: 'refunded' });
+  return toOrderDto(updated);
+}
+
+import { RedeemCodeModel } from './redeem-code.model.js';
+import { UserModel } from '#src/modules/users/user.model.js';
+import { getPushProvider, PUSH_CHANNEL } from '#src/integrations/push/index.js';
+import { notificationRepository } from '#src/modules/notifications/notification.repository.js';
+import { emailService } from '#src/integrations/email/email.service.js';
+
+export async function createRedeemCode({
+  code,
+  description,
+  rewardType = 'free_coins',
+  coins = 0,
+  discountPercent = 0,
+  discountAmountInRupees = 0,
+  targetType = 'all',
+  targetUserId = null,
+  targetUserEmail = null,
+  maxUsesTotal = 1000,
+  maxUsesPerUser = 1,
+  expiresAt = null,
+  adminId = null,
+  sendPush = true,
+  sendEmail = true,
+}) {
+  if (!code) throw new BadRequestError('Code is required', 'CODE_REQUIRED');
+
+  const normalizedCode = code.trim().toUpperCase();
+  const existing = await RedeemCodeModel.findOne({ code: normalizedCode });
+  if (existing) throw new ConflictError('A redeem code with this name already exists', 'CODE_EXISTS');
+
+  let resolvedUserId = targetUserId;
+  let resolvedUserEmail = targetUserEmail;
+
+  if (targetType === 'single_user' && !resolvedUserId && resolvedUserEmail) {
+    const user = await UserModel.findOne({ email: resolvedUserEmail.trim().toLowerCase() });
+    if (!user) throw new NotFoundError('No user found with that email', 'USER_NOT_FOUND');
+    resolvedUserId = user._id;
+    resolvedUserEmail = user.email;
+  }
+
+  const redeemDoc = await RedeemCodeModel.create({
+    code: normalizedCode,
+    description: description?.trim() || '',
+    rewardType,
+    coins: Number(coins) || 0,
+    discountPercent: Number(discountPercent) || 0,
+    discountAmountInRupees: Number(discountAmountInRupees) || 0,
+    targetType,
+    targetUserId: resolvedUserId || null,
+    targetUserEmail: resolvedUserEmail || null,
+    maxUsesTotal: Number(maxUsesTotal) || 1000,
+    maxUsesPerUser: Number(maxUsesPerUser) || 1,
+    expiresAt: expiresAt ? new Date(expiresAt) : null,
+    createdBy: adminId || null,
+  });
+
+  // Broadcast push & email to target users if requested
+  if (sendPush || sendEmail) {
+    (async () => {
+      try {
+        let userQuery = { status: 'active' };
+        if (targetType === 'male') userQuery.gender = 'male';
+        if (targetType === 'female') userQuery.gender = 'female';
+        if (targetType === 'single_user' && resolvedUserId) userQuery = { _id: resolvedUserId };
+
+        const targetUsers = await UserModel.find(userQuery).select('_id email name preferences');
+        const userIds = targetUsers.map((u) => u._id);
+
+        const promoTitle = `🎁 Special Promo Code: ${normalizedCode}`;
+        const promoBody =
+          rewardType === 'free_coins'
+            ? `Use code ${normalizedCode} to get +${coins} free coins in your Coins Store!`
+            : `Use coupon code ${normalizedCode} to get ${
+                rewardType === 'discount_percent' ? `${discountPercent}% OFF` : `₹${discountAmountInRupees} OFF`
+              } on coin packs!`;
+
+        if (sendPush && userIds.length > 0) {
+          const activeDevices = await notificationRepository.findActiveTokensForUsers(userIds);
+          if (activeDevices.length > 0) {
+            const pushProvider = getPushProvider();
+            await pushProvider.send(
+              activeDevices.map((d) => ({
+                token: d.token,
+                title: promoTitle,
+                body: promoBody,
+                data: { type: 'redeem', code: normalizedCode },
+                channelId: PUSH_CHANNEL.PROMOTIONS,
+              })),
+            );
+          }
+        }
+
+        if (sendEmail && targetUsers.length > 0) {
+          const emailUsers = targetUsers.filter((u) => u.email && u.preferences?.marketingEmails !== false);
+          for (const u of emailUsers) {
+            emailService
+              .sendRaw({
+                to: u.email,
+                subject: `🎁 Your Exclusive Promo Code: ${normalizedCode} on Vibe Chat`,
+                html: `
+                  <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1E1B4B;">
+                    <h1 style="color: #FF4E88; font-size: 24px;">🎁 Your Exclusive Promo Code</h1>
+                    <p style="font-size: 16px; line-height: 1.6;">Hello ${u.name || 'there'},</p>
+                    <p style="font-size: 16px; line-height: 1.6;">${promoBody}</p>
+                    <div style="background: #FDF2F8; border: 2px dashed #FF4E88; padding: 16px 24px; text-align: center; border-radius: 12px; margin: 24px 0;">
+                      <span style="font-family: monospace; font-size: 28px; font-weight: bold; letter-spacing: 2px; color: #FF4E88;">${normalizedCode}</span>
+                    </div>
+                    <p style="font-size: 14px; color: #64748B;">Open Vibe Chat ➔ Profile ➔ Get Coins ➔ Redeem Code to claim!</p>
+                  </div>
+                `,
+              })
+              .catch(() => undefined);
+          }
+        }
+      } catch (broadcastErr) {
+        logger.error({ err: broadcastErr }, 'Failed to broadcast redeem code');
+      }
+    })();
+  }
+
+  return redeemDoc;
+}
+
+export async function listRedeemCodesForAdmin({ page = 1, limit = 20, search }) {
+  const query = {};
+  if (search) {
+    query.$or = [
+      { code: { $regex: search, $options: 'i' } },
+      { description: { $regex: search, $options: 'i' } },
+      { targetUserEmail: { $regex: search, $options: 'i' } },
+    ];
+  }
+
+  const skip = (Math.max(1, page) - 1) * limit;
+  const [items, total] = await Promise.all([
+    RedeemCodeModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    RedeemCodeModel.countDocuments(query),
+  ]);
+
+  return {
+    items,
+    meta: {
+      page: Number(page),
+      limit: Number(limit),
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    },
+  };
+}
+
+export async function deleteRedeemCode(id) {
+  const deleted = await RedeemCodeModel.findByIdAndDelete(id);
+  if (!deleted) throw new NotFoundError('Redeem code not found', 'CODE_NOT_FOUND');
+  return { deleted: true };
+}
+
+export async function validateCoupon({ code, user, packagePriceInRupees }) {
+  if (!code) throw new BadRequestError('Enter a code to validate', 'EMPTY_CODE');
+
+  const normalized = code.trim().toUpperCase();
+  const redeemDoc = await RedeemCodeModel.findOne({ code: normalized, isActive: true });
+  if (!redeemDoc) throw new NotFoundError('Invalid or expired coupon code', 'INVALID_CODE');
+
+  if (redeemDoc.expiresAt && new Date(redeemDoc.expiresAt).getTime() < Date.now()) {
+    throw new BadRequestError('This code has expired', 'CODE_EXPIRED');
+  }
+
+  if (redeemDoc.usedCount >= redeemDoc.maxUsesTotal) {
+    throw new BadRequestError('This code has reached its maximum redemptions', 'CODE_MAX_USES_REACHED');
+  }
+
+  // Target checks
+  if (redeemDoc.targetType === 'male' && user.gender !== 'male') {
+    throw new ForbiddenError('This coupon is only valid for male accounts', 'GENDER_MISMATCH');
+  }
+  if (redeemDoc.targetType === 'female' && user.gender !== 'female') {
+    throw new ForbiddenError('This coupon is only valid for female accounts', 'GENDER_MISMATCH');
+  }
+  if (redeemDoc.targetType === 'single_user' && String(redeemDoc.targetUserId) !== String(user.id)) {
+    throw new ForbiddenError('This coupon is not assigned to your account', 'USER_NOT_ELIGIBLE');
+  }
+
+  const userUses = (redeemDoc.redemptions || []).filter((r) => String(r.userId) === String(user.id)).length;
+  if (userUses >= redeemDoc.maxUsesPerUser) {
+    throw new BadRequestError('You have already used this coupon code', 'ALREADY_USED');
+  }
+
+  let discountedPrice = packagePriceInRupees;
+  let discountDescription = '';
+
+  if (redeemDoc.rewardType === 'discount_percent') {
+    discountedPrice = Math.max(1, Math.round(packagePriceInRupees * (1 - redeemDoc.discountPercent / 100)));
+    discountDescription = `${redeemDoc.discountPercent}% OFF applied!`;
+  } else if (redeemDoc.rewardType === 'discount_flat') {
+    discountedPrice = Math.max(1, packagePriceInRupees - redeemDoc.discountAmountInRupees);
+    discountDescription = `₹${redeemDoc.discountAmountInRupees} discount applied!`;
+  } else if (redeemDoc.rewardType === 'free_coins') {
+    discountDescription = `+${redeemDoc.coins} Free Coins Voucher`;
+  }
+
+  return {
+    valid: true,
+    code: redeemDoc.code,
+    rewardType: redeemDoc.rewardType,
+    discountPercent: redeemDoc.discountPercent,
+    discountAmountInRupees: redeemDoc.discountAmountInRupees,
+    freeCoins: redeemDoc.coins,
+    originalPrice: packagePriceInRupees,
+    discountedPrice,
+    discountDescription,
+  };
+}
+
+export async function redeemCode({ code, user }) {
+  if (!code) throw new BadRequestError('Please enter a redeem code', 'EMPTY_CODE');
+
+  const normalized = code.trim().toUpperCase();
+  const redeemDoc = await RedeemCodeModel.findOne({ code: normalized, isActive: true });
+  if (!redeemDoc) throw new NotFoundError('Invalid promo code. Please check and try again.', 'INVALID_CODE');
+
+  if (redeemDoc.expiresAt && new Date(redeemDoc.expiresAt).getTime() < Date.now()) {
+    throw new BadRequestError('This promo code has expired', 'CODE_EXPIRED');
+  }
+
+  if (redeemDoc.usedCount >= redeemDoc.maxUsesTotal) {
+    throw new BadRequestError('This promo code has reached its maximum total redemptions', 'CODE_EXHAUSTED');
+  }
+
+  // Target checks
+  if (redeemDoc.targetType === 'male' && user.gender !== 'male') {
+    throw new ForbiddenError('This promo code is only valid for male accounts', 'GENDER_MISMATCH');
+  }
+  if (redeemDoc.targetType === 'female' && user.gender !== 'female') {
+    throw new ForbiddenError('This promo code is only valid for female accounts', 'GENDER_MISMATCH');
+  }
+  if (redeemDoc.targetType === 'single_user' && String(redeemDoc.targetUserId) !== String(user.id)) {
+    throw new ForbiddenError('This promo code is not assigned to your account', 'USER_NOT_ELIGIBLE');
+  }
+
+  const userUses = (redeemDoc.redemptions || []).filter((r) => String(r.userId) === String(user.id)).length;
+  if (userUses >= redeemDoc.maxUsesPerUser) {
+    throw new BadRequestError('You have already redeemed this code', 'ALREADY_REDEEMED');
+  }
+
+  if (redeemDoc.rewardType === 'free_coins') {
+    const coinsToAdd = redeemDoc.coins;
+    await coinsService.adjustBalance({
+      userId: user.id,
+      gender: user.gender,
+      amount: coinsToAdd,
+      reason: `Redeemed promo code ${redeemDoc.code}`,
+    });
+
+    await RedeemCodeModel.findByIdAndUpdate(redeemDoc._id, {
+      $inc: { usedCount: 1 },
+      $push: {
+        redemptions: {
+          userId: user.id,
+          userEmail: user.email,
+          userNickname: user.nickname,
+          redeemedAt: new Date(),
+          creditedCoins: coinsToAdd,
+        },
+      },
+    });
+
+    logger.info({ userId: user.id, code: redeemDoc.code, coinsToAdd }, 'Promo code redeemed for free coins');
+
+    return {
+      success: true,
+      rewardType: 'free_coins',
+      coinsCredited: coinsToAdd,
+      message: `🎉 Success! +${coinsToAdd} free coins added to your wallet!`,
+    };
+  }
+
+  // If discount voucher
+  return {
+    success: true,
+    rewardType: redeemDoc.rewardType,
+    discountPercent: redeemDoc.discountPercent,
+    discountAmountInRupees: redeemDoc.discountAmountInRupees,
+    message: `🏷️ Coupon applied: ${
+      redeemDoc.rewardType === 'discount_percent'
+        ? `${redeemDoc.discountPercent}% OFF`
+        : `₹${redeemDoc.discountAmountInRupees} OFF`
+    } on your next purchase!`,
+  };
 }
 
 export async function listMyOrders({ userId, page, limit }) {
@@ -423,7 +783,13 @@ export const paymentService = {
   submitManualPaymentProof,
   approveManualPayment,
   rejectManualPayment,
+  refundOrder,
   listMyOrders,
   listOrdersForAdmin,
   getPaymentOptions,
+  createRedeemCode,
+  listRedeemCodesForAdmin,
+  deleteRedeemCode,
+  redeemCode,
+  validateCoupon,
 };

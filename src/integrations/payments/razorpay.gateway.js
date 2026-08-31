@@ -86,4 +86,11 @@ export const razorpayGateway = {
   async fetchPayment(paymentId) {
     return getClient().payments.fetch(paymentId);
   },
+
+  async refundPayment({ paymentId, amountInPaise, notes = {} }) {
+    return getClient().payments.refund(paymentId, {
+      amount: amountInPaise,
+      notes,
+    });
+  },
 };

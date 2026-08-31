@@ -14,6 +14,11 @@ export const userController = {
     return sendSuccess(res, profile);
   }),
 
+  deleteMyAccount: asyncHandler(async (req, res) => {
+    const result = await userService.deleteMyAccount(req.user.id);
+    return sendSuccess(res, result);
+  }),
+
   uploadAvatar: asyncHandler(async (req, res) => {
     if (!req.file) throw new BadRequestError('Choose an image to upload', 'FILE_REQUIRED');
     const result = await userService.updateAvatar({ userId: req.user.id, file: req.file });
@@ -62,6 +67,37 @@ export const userController = {
   listBlockedUsers: asyncHandler(async (req, res) => {
     const blocked = await userService.listBlockedUsers(req.user.id);
     return sendSuccess(res, blocked);
+  }),
+
+  listBlockedByOthers: asyncHandler(async (req, res) => {
+    const list = await userService.listUsersBlockingMe(req.user.id);
+    return sendSuccess(res, list);
+  }),
+
+  followUser: asyncHandler(async (req, res) => {
+    const result = await userService.followUser({
+      userId: req.user.id,
+      targetUserId: req.params.userId,
+    });
+    return sendSuccess(res, result);
+  }),
+
+  unfollowUser: asyncHandler(async (req, res) => {
+    const result = await userService.unfollowUser({
+      userId: req.user.id,
+      targetUserId: req.params.userId,
+    });
+    return sendSuccess(res, result);
+  }),
+
+  listFollowers: asyncHandler(async (req, res) => {
+    const list = await userService.listFollowers(req.params.userId || req.user.id);
+    return sendSuccess(res, list);
+  }),
+
+  listFollowing: asyncHandler(async (req, res) => {
+    const list = await userService.listFollowing(req.params.userId || req.user.id);
+    return sendSuccess(res, list);
   }),
 
   getOnlineCounts: asyncHandler(async (_req, res) => {

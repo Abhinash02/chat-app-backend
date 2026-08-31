@@ -7,6 +7,7 @@ export const PAYMENT_STATUS = Object.freeze({
   FAILED: 'failed',
   REJECTED: 'rejected',
   EXPIRED: 'expired',
+  REFUNDED: 'refunded',
 });
 
 /** Orders left unpaid longer than this are swept to `expired`. */

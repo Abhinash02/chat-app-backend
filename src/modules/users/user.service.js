@@ -4,14 +4,15 @@ import { buildPaginationMeta, resolvePagination } from '#src/common/utils/pagina
 import { omitUndefined, flattenToDotPaths } from '#src/common/utils/object.util.js';
 import { logger } from '#src/config/logger.js';
 import { getStorageProvider } from '#src/integrations/storage/index.js';
-import { emitToAll } from '#src/realtime/emitter.js';
+import { emitToAll, emitToUser } from '#src/realtime/emitter.js';
 import { SOCKET_EVENT } from '#src/realtime/events.js';
+import { notificationService } from '#src/modules/notifications/notification.service.js';
 import { settingsService } from '#src/modules/settings/settings.service.js';
 import { userRepository } from '#src/modules/users/user.repository.js';
 import { oppositeGenderOf } from '#src/modules/users/user.types.js';
 import { UserModel } from '#src/modules/users/user.model.js';
 
-function toPublicProfile(user, { showDistance = false } = {}) {
+function toPublicProfile(user, { showDistance = false, isFollowing = false, followersCount = 0, followingCount = 0 } = {}) {
   const distanceKm =
     showDistance && typeof user.distanceMeters === 'number'
       ? Math.round((user.distanceMeters / 1000) * 10) / 10
@@ -22,6 +23,8 @@ function toPublicProfile(user, { showDistance = false } = {}) {
     name: user.name,
     nickname: user.nickname,
     gender: user.gender,
+    ageGroup: user.ageGroup ?? '18-21',
+    zodiacSign: user.zodiacSign ?? null,
     avatarUrl: user.avatarUrl ?? null,
     avatarEmoji: user.avatarEmoji ?? null,
     avatarColor: user.avatarColor ?? null,
@@ -33,16 +36,21 @@ function toPublicProfile(user, { showDistance = false } = {}) {
     city: user.location?.city ?? null,
     country: user.location?.country ?? null,
     distanceKm,
+    followersCount: typeof user.followersCount === 'number' ? user.followersCount : followersCount,
+    followingCount: Array.isArray(user.followingUserIds) ? user.followingUserIds.length : followingCount,
+    isFollowing: Boolean(isFollowing),
   };
 }
 
-function toOwnProfile(user) {
+function toOwnProfile(user, { followersCount = 0 } = {}) {
   return {
     id: String(user._id),
     name: user.name,
     nickname: user.nickname,
     email: user.email,
     gender: user.gender,
+    ageGroup: user.ageGroup ?? '18-21',
+    zodiacSign: user.zodiacSign ?? null,
     role: user.role,
     status: user.status,
     avatarUrl: user.avatarUrl ?? null,
@@ -64,6 +72,8 @@ function toOwnProfile(user) {
     },
     isEmailVerified: Boolean(user.emailVerifiedAt),
     blockedCount: user.blockedUserIds?.length ?? 0,
+    followersCount: typeof user.followersCount === 'number' ? user.followersCount : followersCount,
+    followingCount: Array.isArray(user.followingUserIds) ? user.followingUserIds.length : 0,
     createdAt: user.createdAt,
   };
 }
@@ -80,7 +90,8 @@ async function buildExclusionList(user) {
 export async function getMyProfile(userId) {
   const user = await userRepository.findById(userId);
   if (!user) throw new NotFoundError('Account not found', 'USER_NOT_FOUND');
-  return toOwnProfile(user);
+  const followersCount = await userRepository.countFollowers(userId);
+  return toOwnProfile(user, { followersCount });
 }
 
 export async function updateMyProfile(userId, patch) {
@@ -92,8 +103,9 @@ export async function updateMyProfile(userId, patch) {
   const update = flattenToDotPaths(omitUndefined(patch));
   const updated = await userRepository.updateById(userId, { $set: update });
   if (!updated) throw new NotFoundError('Account not found', 'USER_NOT_FOUND');
+  const followersCount = await userRepository.countFollowers(userId);
 
-  return toOwnProfile(updated);
+  return toOwnProfile(updated, { followersCount });
 }
 
 /**
@@ -202,7 +214,10 @@ export async function discoverUsers({ viewer, page, limit, onlineOnly, search, l
     });
 
     return {
-      items: items.map((item) => toPublicProfile(item, { showDistance: settings.discovery.showDistance })),
+      items: items.map((item) => toPublicProfile(item, {
+        showDistance: settings.discovery.showDistance,
+        isFollowing: (me.followingUserIds ?? []).some((id) => String(id) === String(item._id)),
+      })),
       meta: { ...buildPaginationMeta({ page: safePage, limit: safeLimit, total }), radiusKm: cappedRadius },
     };
   }
@@ -217,7 +232,9 @@ export async function discoverUsers({ viewer, page, limit, onlineOnly, search, l
   });
 
   return {
-    items: items.map((item) => toPublicProfile(item)),
+    items: items.map((item) => toPublicProfile(item, {
+      isFollowing: (me.followingUserIds ?? []).some((id) => String(id) === String(item._id)),
+    })),
     meta: buildPaginationMeta({ page: safePage, limit: safeLimit, total }),
   };
 }
@@ -240,7 +257,14 @@ export async function getPublicProfile({ viewerId, targetUserId }) {
   const blockedByTarget = await UserModel.exists({ _id: targetUserId, blockedUserIds: viewerId });
   if (blockedByTarget) throw new NotFoundError('This profile is not available', 'USER_NOT_FOUND');
 
-  return toPublicProfile(target);
+  const [followersCount, followingCount] = await Promise.all([
+    userRepository.countFollowers(targetUserId),
+    userRepository.countFollowing(targetUserId),
+  ]);
+
+  const isFollowing = (viewer?.followingUserIds ?? []).some((id) => String(id) === String(targetUserId));
+
+  return toPublicProfile(target, { isFollowing, followersCount, followingCount });
 }
 
 export async function blockUser({ userId, targetUserId }) {
@@ -252,6 +276,8 @@ export async function blockUser({ userId, targetUserId }) {
   if (!target) throw new NotFoundError('This profile is not available', 'USER_NOT_FOUND');
 
   const updated = await userRepository.addBlockedUser(userId, targetUserId);
+  // Auto unfollow when blocking
+  await userRepository.removeFollowingUser(userId, targetUserId);
   return { blockedCount: updated.blockedUserIds.length };
 }
 
@@ -262,7 +288,7 @@ export async function unblockUser({ userId, targetUserId }) {
 
 export async function listBlockedUsers(userId) {
   const user = await UserModel.findById(userId)
-    .populate('blockedUserIds', 'nickname avatarUrl gender')
+    .populate('blockedUserIds', 'nickname avatarUrl avatarEmoji avatarColor gender bio')
     .lean()
     .exec();
 
@@ -270,7 +296,147 @@ export async function listBlockedUsers(userId) {
     id: String(blocked._id),
     nickname: blocked.nickname,
     avatarUrl: blocked.avatarUrl ?? null,
+    avatarEmoji: blocked.avatarEmoji ?? null,
+    avatarColor: blocked.avatarColor ?? null,
     gender: blocked.gender,
+    bio: blocked.bio ?? '',
+  }));
+}
+
+export async function listUsersBlockingMe(userId) {
+  const list = await userRepository.findUsersBlockingUser(userId);
+  return list.map((user) => ({
+    id: String(user._id),
+    nickname: user.nickname,
+    avatarUrl: user.avatarUrl ?? null,
+    avatarEmoji: user.avatarEmoji ?? null,
+    avatarColor: user.avatarColor ?? null,
+    gender: user.gender,
+    bio: user.bio ?? '',
+  }));
+}
+
+export async function followUser({ userId, targetUserId }) {
+  if (String(userId) === String(targetUserId)) {
+    throw new ConflictError('You cannot follow yourself', 'CANNOT_FOLLOW_SELF');
+  }
+
+  const target = await userRepository.findById(targetUserId);
+  if (!target) throw new NotFoundError('This profile is not available', 'USER_NOT_FOUND');
+
+  const isBlocked = await areUsersBlocked(userId, targetUserId);
+  if (isBlocked) {
+    throw new ForbiddenError('Cannot follow a blocked user', 'USER_BLOCKED');
+  }
+
+  await userRepository.addFollowingUser(userId, targetUserId);
+  const [followersCount, followingCount, actor] = await Promise.all([
+    userRepository.countFollowers(targetUserId),
+    userRepository.countFollowing(userId),
+    userRepository.findById(userId),
+  ]);
+
+  const followerName = actor?.nickname || actor?.name || 'A user';
+
+  // Real-time notification to both target user and follower
+  emitToUser(targetUserId, SOCKET_EVENT.FOLLOW_UPDATED, {
+    actorId: String(userId),
+    actorName: followerName,
+    targetUserId: String(targetUserId),
+    isFollowing: true,
+    followersCount,
+  });
+  emitToUser(userId, SOCKET_EVENT.FOLLOW_UPDATED, {
+    actorId: String(userId),
+    targetUserId: String(targetUserId),
+    isFollowing: true,
+    followingCount,
+  });
+
+  // Push notification to target user
+  notificationService
+    .sendToUser({
+      userId: targetUserId,
+      title: 'New Follower! 🎉',
+      body: `${followerName} started following you now.`,
+      data: { type: 'new_follower', userId: String(userId) },
+    })
+    .catch((err) => logger.warn({ err }, 'Failed to send follow push notification'));
+
+  return { isFollowing: true, followersCount, followingCount };
+}
+
+export async function unfollowUser({ userId, targetUserId }) {
+  await userRepository.removeFollowingUser(userId, targetUserId);
+  const [followersCount, followingCount] = await Promise.all([
+    userRepository.countFollowers(targetUserId),
+    userRepository.countFollowing(userId),
+  ]);
+
+  // Real-time notification to both target user and follower
+  emitToUser(targetUserId, SOCKET_EVENT.FOLLOW_UPDATED, {
+    actorId: String(userId),
+    targetUserId: String(targetUserId),
+    isFollowing: false,
+    followersCount,
+  });
+  emitToUser(userId, SOCKET_EVENT.FOLLOW_UPDATED, {
+    actorId: String(userId),
+    targetUserId: String(targetUserId),
+    isFollowing: false,
+    followingCount,
+  });
+
+  return { isFollowing: false, followersCount, followingCount };
+}
+
+export async function deleteMyAccount(userId) {
+  const updated = await userRepository.updateById(userId, {
+    $set: {
+      status: USER_STATUS.INACTIVE,
+      isOnline: false,
+      activeConnections: 0,
+      tokensValidFrom: new Date(),
+    },
+  });
+  if (!updated) throw new NotFoundError('Account not found', 'USER_NOT_FOUND');
+
+  emitToAll(SOCKET_EVENT.PRESENCE_UPDATED, {
+    userId: String(userId),
+    isOnline: false,
+    lastSeenAt: new Date(),
+  });
+
+  return { success: true };
+}
+
+export async function listFollowers(userId) {
+  const followers = await userRepository.findFollowers(userId);
+  return followers.map((user) => ({
+    id: String(user._id),
+    nickname: user.nickname,
+    avatarUrl: user.avatarUrl ?? null,
+    avatarEmoji: user.avatarEmoji ?? null,
+    avatarColor: user.avatarColor ?? null,
+    gender: user.gender,
+    bio: user.bio ?? '',
+    isOnline: Boolean(user.isOnline),
+    lastSeenAt: user.lastSeenAt ?? null,
+  }));
+}
+
+export async function listFollowing(userId) {
+  const following = await userRepository.findFollowing(userId);
+  return following.map((user) => ({
+    id: String(user._id),
+    nickname: user.nickname,
+    avatarUrl: user.avatarUrl ?? null,
+    avatarEmoji: user.avatarEmoji ?? null,
+    avatarColor: user.avatarColor ?? null,
+    gender: user.gender,
+    bio: user.bio ?? '',
+    isOnline: Boolean(user.isOnline),
+    lastSeenAt: user.lastSeenAt ?? null,
   }));
 }
 
@@ -333,6 +499,12 @@ export const userService = {
   blockUser,
   unblockUser,
   listBlockedUsers,
+  listUsersBlockingMe,
+  followUser,
+  unfollowUser,
+  listFollowers,
+  listFollowing,
+  deleteMyAccount,
   areUsersBlocked,
   setPresence,
   resetAllPresence,

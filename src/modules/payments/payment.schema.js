@@ -30,6 +30,12 @@ export const orderIdParamSchema = z.object({ orderId: objectIdSchema });
 
 export const rejectOrderSchema = z.object({ reason: z.string().trim().min(3).max(200) }).strict();
 
+export const refundOrderSchema = z
+  .object({
+    reason: z.string().trim().min(3, 'Provide a reason for the refund').max(200).optional(),
+  })
+  .strict();
+
 export const listOrdersSchema = paginationSchema.extend({
   status: z.nativeEnum(PAYMENT_STATUS).optional(),
 });

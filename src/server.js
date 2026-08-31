@@ -67,7 +67,7 @@ async function bootstrap() {
       reject(error);
     });
 
-    httpServer.listen(env.PORT, resolve);
+    httpServer.listen(env.PORT, '0.0.0.0', resolve);
   });
   logger.info({ port: env.PORT, env: env.NODE_ENV, api: env.API_PREFIX }, 'Server listening');
 

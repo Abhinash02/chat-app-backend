@@ -95,6 +95,19 @@ const moderationSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const appVersionSchema = new mongoose.Schema(
+  {
+    latestVersion: { type: String, default: DEFAULT_SETTINGS.appVersion.latestVersion },
+    minimumVersion: { type: String, default: DEFAULT_SETTINGS.appVersion.minimumVersion },
+    latestVersionCode: { type: Number, default: DEFAULT_SETTINGS.appVersion.latestVersionCode },
+    forceUpdate: { type: Boolean, default: DEFAULT_SETTINGS.appVersion.forceUpdate },
+    playStoreUrl: { type: String, default: DEFAULT_SETTINGS.appVersion.playStoreUrl },
+    appStoreUrl: { type: String, default: DEFAULT_SETTINGS.appVersion.appStoreUrl },
+    updateMessage: { type: String, default: DEFAULT_SETTINGS.appVersion.updateMessage },
+  },
+  { _id: false },
+);
+
 const settingsSchema = new mongoose.Schema(
   {
     key: { type: String, default: SETTINGS_SINGLETON_KEY, unique: true, immutable: true },
@@ -105,6 +118,7 @@ const settingsSchema = new mongoose.Schema(
     discovery: { type: discoverySchema, default: () => ({}) },
     payments: { type: paymentsSchema, default: () => ({}) },
     moderation: { type: moderationSchema, default: () => ({}) },
+    appVersion: { type: appVersionSchema, default: () => ({}) },
     updatedByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true },

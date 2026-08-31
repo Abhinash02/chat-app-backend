@@ -2,7 +2,7 @@ import { Server } from 'socket.io';
 
 import { env } from '#src/config/env.js';
 import { logger } from '#src/config/logger.js';
-import { registerSocketServer, userRoom } from '#src/realtime/emitter.js';
+import { adminRoom, registerSocketServer, userRoom } from '#src/realtime/emitter.js';
 import { SOCKET_EVENT } from '#src/realtime/events.js';
 import { authenticateSocket } from '#src/realtime/socket.auth.js';
 import { registerChatHandlers } from '#src/realtime/handlers/chat.handler.js';
@@ -15,7 +15,7 @@ import { userService } from '#src/modules/users/user.service.js';
 
 export function createSocketServer(httpServer) {
   const io = new Server(httpServer, {
-    cors: { origin: env.corsOrigins, credentials: true },
+    cors: { origin: env.isProduction ? env.corsOrigins : true, credentials: true },
     // React Native networks drop often; a slightly generous window avoids
     // flapping the green presence dot on every tunnel hiccup.
     pingInterval: 25_000,
@@ -31,6 +31,9 @@ export function createSocketServer(httpServer) {
     // Every device of one account shares a room, so server-side pushes reach
     // all of them without tracking socket ids.
     socket.join(userRoom(user.id));
+    if (user.role === 'admin') {
+      socket.join(adminRoom());
+    }
 
     await userService.setPresence({ userId: user.id, delta: 1 });
 

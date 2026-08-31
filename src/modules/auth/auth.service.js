@@ -52,6 +52,9 @@ function toAuthUser(user) {
     avatarEmoji: user.avatarEmoji ?? null,
     avatarColor: user.avatarColor ?? null,
     bio: user.bio ?? '',
+    ageGroup: user.ageGroup ?? '18-21',
+    zodiacSign: user.zodiacSign ?? null,
+    city: user.location?.city ?? null,
     isEmailVerified: Boolean(user.emailVerifiedAt),
     createdAt: user.createdAt,
   };
@@ -182,7 +185,17 @@ async function consumeOtp({ userId, purpose, code }) {
  * one. The trade is deliberate: fewer people abandon signup, at the cost of
  * throwaway accounts being cheaper to create.
  */
-export async function register({ name, nickname, email, password, gender, userAgent, ipAddress }) {
+export async function register({
+  name,
+  nickname,
+  email,
+  password,
+  gender,
+  ageGroup,
+  zodiacSign,
+  userAgent,
+  ipAddress,
+}) {
   if (await userRepository.existsByEmail(email)) {
     throw new ConflictError('An account with this email already exists', 'EMAIL_TAKEN');
   }
@@ -199,6 +212,8 @@ export async function register({ name, nickname, email, password, gender, userAg
     nickname,
     email,
     gender,
+    ageGroup: ageGroup || '18-21',
+    zodiacSign: zodiacSign || null,
     passwordHash: await hashPassword(password),
     role: USER_ROLE.USER,
     status: USER_STATUS.PENDING_VERIFICATION,

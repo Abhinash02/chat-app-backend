@@ -72,6 +72,18 @@ export const updateSettingsSchema = z
       })
       .strict()
       .optional(),
+    appVersion: z
+      .object({
+        latestVersion: z.string().trim().min(1).max(30).optional(),
+        minimumVersion: z.string().trim().min(1).max(30).optional(),
+        latestVersionCode: z.number().int().min(1).max(100_000).optional(),
+        forceUpdate: z.boolean().optional(),
+        playStoreUrl: z.string().trim().max(500).optional(),
+        appStoreUrl: z.string().trim().max(500).optional(),
+        updateMessage: z.string().trim().max(500).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
