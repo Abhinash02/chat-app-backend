@@ -34,23 +34,18 @@ export function createApp() {
       origin(origin, callback) {
         // Native apps and server-to-server calls send no Origin header.
         if (!origin) return callback(null, true);
-        if (env.corsOrigins.includes(origin)) return callback(null, true);
 
-        /*
-         * Any localhost port is allowed in development.
-         *
-         * Expo and Vite both pick whatever port is free, so pinning one means
-         * a blocked request the first time 8081 is already taken. Nothing
-         * sensitive is reachable from a developer's own machine that they
-         * could not reach anyway, and production still uses the strict list
-         * above.
-         */
-        if (!env.isProduction && /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+        // Allow wildcard or explicit matches
+        if (
+          env.corsOrigins.includes('*') ||
+          env.corsOrigins.includes(origin) ||
+          origin.endsWith('.vercel.app') ||
+          origin.endsWith('.onrender.com') ||
+          /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin)
+        ) {
           return callback(null, true);
         }
 
-        // A blocked origin is a configuration problem, not a server fault, so
-        // it gets a named 403 rather than collapsing into a generic 500.
         return callback(
           new ForbiddenError(
             `Origin ${origin} is not allowed. Add it to CORS_ORIGINS.`,
