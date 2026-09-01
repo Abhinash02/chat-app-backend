@@ -31,4 +31,14 @@ export const gameController = {
     const { items, meta } = await gameService.listMySessions({ userId: req.user.id, ...req.query });
     return sendSuccess(res, items, { meta });
   }),
+
+  getPointsConversion: asyncHandler(async (req, res) => {
+    const info = await gameService.getPointsConversionInfo({ user: req.user });
+    return sendSuccess(res, info);
+  }),
+
+  convertPoints: asyncHandler(async (req, res) => {
+    const result = await gameService.convertPointsToCoins({ user: req.user, ...req.body });
+    return sendSuccess(res, result);
+  }),
 };

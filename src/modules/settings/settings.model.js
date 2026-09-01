@@ -48,6 +48,22 @@ const gamesSchema = new mongoose.Schema(
       max: 100,
       default: DEFAULT_SETTINGS.games.coinsPerPointConversion,
     },
+    pointsPerCoin: {
+      type: Number,
+      min: 1,
+      max: 100_000,
+      default: DEFAULT_SETTINGS.games.pointsPerCoin,
+    },
+    minPointsToConvert: {
+      type: Number,
+      min: 1,
+      max: 100_000,
+      default: DEFAULT_SETTINGS.games.minPointsToConvert,
+    },
+    pointsConversionEnabled: {
+      type: Boolean,
+      default: DEFAULT_SETTINGS.games.pointsConversionEnabled,
+    },
   },
   { _id: false },
 );

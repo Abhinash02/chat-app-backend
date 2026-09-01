@@ -33,6 +33,9 @@ export const updateSettingsSchema = z
         leaderboardSize: z.number().int().min(3).max(500).optional(),
         maxSessionsPerDay: z.number().int().min(1).max(1000).optional(),
         coinsPerPointConversion: z.number().min(0).max(100).optional(),
+        pointsPerCoin: z.number().int().min(1).max(100_000).optional(),
+        minPointsToConvert: z.number().int().min(1).max(100_000).optional(),
+        pointsConversionEnabled: z.boolean().optional(),
       })
       .strict()
       .optional(),

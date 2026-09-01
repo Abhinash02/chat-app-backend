@@ -19,3 +19,9 @@ export const leaderboardQuerySchema = z.object({
 });
 
 export const listSessionsSchema = paginationSchema;
+
+export const convertPointsSchema = z
+  .object({
+    points: z.coerce.number().int().min(1).max(10_000_000),
+  })
+  .strict();

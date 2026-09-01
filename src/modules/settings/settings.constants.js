@@ -44,6 +44,12 @@ export const DEFAULT_SETTINGS = Object.freeze({
     /** Guard against a client replaying a high score endlessly. */
     maxSessionsPerDay: 50,
     coinsPerPointConversion: 0,
+    /** Game points needed to exchange for 1 coin (e.g. 100 points = 1 coin, so 2000 points = 20 coins). */
+    pointsPerCoin: 100,
+    /** Minimum points a user must have to trigger a conversion. */
+    minPointsToConvert: 100,
+    /** Master toggle for points to coins conversion. */
+    pointsConversionEnabled: true,
   },
   rooms: {
     enabled: true,

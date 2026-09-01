@@ -13,8 +13,8 @@ export async function connectDatabase(uri = env.MONGODB_URI) {
   connectionPromise = mongoose
     .connect(uri, {
       serverSelectionTimeoutMS: 10_000,
-      maxPoolSize: 20,
-      minPoolSize: 2,
+      maxPoolSize: 30,
+      minPoolSize: 5,
       // Building indexes on every boot is convenient locally but a real hazard
       // in production, where it can lock a large collection during a deploy.
       // Production syncs them explicitly via `npm run sync-indexes`.

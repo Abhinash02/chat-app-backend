@@ -208,10 +208,100 @@ export async function listMySessions({ userId, page, limit }) {
   };
 }
 
+export async function getPointsConversionInfo({ user }) {
+  const settings = await settingsService.getSettings();
+  const gameSettings = settings.games;
+
+  const dbUser = await userRepository.findById(user.id);
+  const gamePoints = dbUser?.gamePoints ?? 0;
+
+  const pointsPerCoin = gameSettings.pointsPerCoin || 100;
+  const minPointsToConvert = gameSettings.minPointsToConvert || 100;
+  const enabled = Boolean(gameSettings.enabled && (gameSettings.pointsConversionEnabled ?? true));
+
+  const convertibleCoins = Math.floor(gamePoints / pointsPerCoin);
+
+  return {
+    gamePoints,
+    pointsPerCoin,
+    minPointsToConvert,
+    enabled,
+    convertibleCoins,
+  };
+}
+
+export async function convertPointsToCoins({ user, points }) {
+  const settings = await settingsService.getSettings();
+  const gameSettings = settings.games;
+
+  if (!gameSettings.enabled || !(gameSettings.pointsConversionEnabled ?? true)) {
+    throw new ForbiddenError('Points to coins conversion is currently disabled', 'POINTS_CONVERSION_DISABLED');
+  }
+
+  const pointsNum = Math.floor(Number(points));
+  if (!Number.isFinite(pointsNum) || pointsNum <= 0) {
+    throw new BadRequestError('Please enter a valid amount of points to convert', 'INVALID_POINTS');
+  }
+
+  const pointsPerCoin = gameSettings.pointsPerCoin || 100;
+  const minPointsToConvert = gameSettings.minPointsToConvert || 100;
+
+  if (pointsNum < minPointsToConvert) {
+    throw new BadRequestError(
+      `Minimum points required for conversion is ${minPointsToConvert} points`,
+      'MIN_POINTS_REQUIRED',
+      { minPointsToConvert },
+    );
+  }
+
+  const coinsToCredit = Math.floor(pointsNum / pointsPerCoin);
+  if (coinsToCredit <= 0) {
+    throw new BadRequestError(
+      `You need at least ${pointsPerCoin} points to get 1 coin`,
+      'NOT_ENOUGH_POINTS_FOR_COIN',
+      { pointsPerCoin },
+    );
+  }
+
+  const pointsToDeduct = coinsToCredit * pointsPerCoin;
+
+  const updatedUser = await userRepository.deductGamePoints(user.id, pointsToDeduct);
+  if (!updatedUser) {
+    throw new BadRequestError('You do not have enough game points to convert', 'INSUFFICIENT_GAME_POINTS');
+  }
+
+  const walletResult = await coinsService.creditCoins({
+    userId: user.id,
+    gender: user.gender,
+    amount: coinsToCredit,
+    type: COIN_TRANSACTION_TYPE.GAME_REWARD,
+    description: `Converted ${pointsToDeduct.toLocaleString()} game points to ${coinsToCredit} coins`,
+  });
+
+  const rank = (await userRepository.countUsersWithMorePoints(updatedUser.gamePoints)) + 1;
+
+  emitToAll(SOCKET_EVENT.LEADERBOARD_UPDATED, {
+    userId: String(user.id),
+    nickname: user.nickname,
+    totalPoints: updatedUser.gamePoints,
+    rank,
+  });
+
+  return {
+    pointsDeducted: pointsToDeduct,
+    coinsCredited: coinsToCredit,
+    remainingGamePoints: updatedUser.gamePoints,
+    newWalletBalance: walletResult?.balance ?? 0,
+    rank,
+  };
+}
+
 export const gameService = {
   listGames,
   startSession,
   completeSession,
   getLeaderboard,
   listMySessions,
+  getPointsConversionInfo,
+  convertPointsToCoins,
 };

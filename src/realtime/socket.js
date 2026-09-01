@@ -7,6 +7,8 @@ import { SOCKET_EVENT } from '#src/realtime/events.js';
 import { authenticateSocket } from '#src/realtime/socket.auth.js';
 import { registerChatHandlers } from '#src/realtime/handlers/chat.handler.js';
 import { registerRoomHandlers } from '#src/realtime/handlers/room.handler.js';
+import { registerRandomCallHandlers } from '#src/realtime/handlers/random-call.handler.js';
+import { randomCallManager } from '#src/modules/random-call/random-call.manager.js';
 import { chatService } from '#src/modules/chat/chat.service.js';
 import { coinsService } from '#src/modules/coins/coins.service.js';
 import { roomService } from '#src/modules/rooms/room.service.js';
@@ -31,7 +33,7 @@ export function createSocketServer(httpServer) {
     // Every device of one account shares a room, so server-side pushes reach
     // all of them without tracking socket ids.
     socket.join(userRoom(user.id));
-    if (user.role === 'admin') {
+    if (user.role === 'admin' || user.role === 'super_admin') {
       socket.join(adminRoom());
     }
 
@@ -39,6 +41,7 @@ export function createSocketServer(httpServer) {
 
     registerChatHandlers(socket);
     registerRoomHandlers(socket);
+    registerRandomCallHandlers(socket);
 
     // One round trip gives the app everything its header needs: coins, free-talk
     // countdown, unread badge and the current theme.
@@ -62,6 +65,7 @@ export function createSocketServer(httpServer) {
 
     socket.on('disconnect', async (reason) => {
       try {
+        randomCallManager.handleDisconnect(socket, user);
         await userService.setPresence({ userId: user.id, delta: -1 });
 
         // A dropped connection must not leave a ghost seat in a voice room.

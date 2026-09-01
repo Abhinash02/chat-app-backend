@@ -58,6 +58,12 @@ export const SOCKET_EVENT = Object.freeze({
   ADMIN_PAYMENT_NEW: 'admin:payment:new',
   ADMIN_PAYMENT_UPDATED: 'admin:payment:updated',
 
+  // Customer Support
+  SUPPORT_MESSAGE_SEND: 'support:message:send',
+  SUPPORT_MESSAGE_NEW: 'support:message:new',
+  SUPPORT_TICKET_CREATED: 'support:ticket:created',
+  SUPPORT_TICKET_UPDATED: 'support:ticket:updated',
+
   // Generic error channel
   ERROR: 'app:error',
 });

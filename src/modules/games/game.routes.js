@@ -4,6 +4,7 @@ import { authenticate, requireVerifiedAccount, validate } from '#src/common/midd
 import { gameController } from '#src/modules/games/game.controller.js';
 import {
   completeSessionSchema,
+  convertPointsSchema,
   leaderboardQuerySchema,
   listSessionsSchema,
   sessionIdParamSchema,
@@ -15,6 +16,8 @@ const router = Router();
 router.use(authenticate, requireVerifiedAccount);
 
 router.get('/', gameController.listGames);
+router.get('/points-conversion', gameController.getPointsConversion);
+router.post('/convert-points', validate({ body: convertPointsSchema }), gameController.convertPoints);
 router.get('/leaderboard', validate({ query: leaderboardQuerySchema }), gameController.getLeaderboard);
 router.get('/sessions', validate({ query: listSessionsSchema }), gameController.listMySessions);
 router.post('/sessions', validate({ body: startSessionSchema }), gameController.startSession);

@@ -7,9 +7,14 @@ import { settingsService } from '#src/modules/settings/settings.service.js';
 
 function extractBearerToken(req) {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) return null;
-  const token = header.slice('Bearer '.length).trim();
-  return token || null;
+  if (header && header.startsWith('Bearer ')) {
+    const token = header.slice('Bearer '.length).trim();
+    if (token) return token;
+  }
+  if (req.query?.token) {
+    return String(req.query.token).trim() || null;
+  }
+  return null;
 }
 
 /**

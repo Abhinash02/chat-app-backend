@@ -14,7 +14,16 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 3 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 12 * 1024 * 1024;
 
-const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/heic',
+  'image/heif',
+  'image/bmp',
+]);
 
 /**
  * Recorder output differs by platform: iOS gives m4a, Android gives m4a or

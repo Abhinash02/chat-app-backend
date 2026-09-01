@@ -48,6 +48,12 @@ const envSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string().optional().default(''),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional().default(''),
 
+  CASHFREE_APP_ID: z.string().optional().default(''),
+  CASHFREE_SECRET_KEY: z.string().optional().default(''),
+  CASHFREE_MERCHANT_ID: z.string().optional().default(''),
+  CASHFREE_ENV: z.string().default('TEST'),
+  CASHFREE_API_VERSION: z.string().default('2023-08-01'),
+
   SEED_ADMIN_EMAIL: z.string().email().default('admin@vibechat.app'),
   SEED_ADMIN_PASSWORD: z.string().min(8).default('Admin@12345'),
 });
@@ -74,4 +80,5 @@ export const env = Object.freeze({
   isEmailConfigured: Boolean(raw.SMTP_HOST && raw.SMTP_USER),
   publicApiUrl: raw.PUBLIC_API_URL || `http://localhost:${raw.PORT}`,
   isRazorpayConfigured: Boolean(raw.RAZORPAY_KEY_ID && raw.RAZORPAY_KEY_SECRET),
+  isCashfreeConfigured: Boolean(raw.CASHFREE_APP_ID && raw.CASHFREE_SECRET_KEY),
 });

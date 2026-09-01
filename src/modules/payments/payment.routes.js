@@ -20,13 +20,23 @@ import {
 
 const router = Router();
 
+// Public Cashfree browser return endpoint (Cashfree redirects here after checkout)
+router.get('/cashfree/return', paymentController.handleCashfreeReturn);
+
 router.use(authenticate);
 
 router.get('/options', paymentController.getOptions);
 router.get('/orders', validate({ query: listOrdersSchema }), paymentController.listMyOrders);
+router.get(
+  '/orders/:orderId/invoice',
+  validate({ params: orderIdParamSchema }),
+  paymentController.getOrderInvoice,
+);
 
 router.use(requireVerifiedAccount, paymentRateLimiter);
 
+router.post('/orders/cashfree', validate({ body: createOrderSchema }), paymentController.createCashfreeOrder);
+router.post('/orders/cashfree/verify', paymentController.verifyCashfreePayment);
 router.post('/orders/razorpay', validate({ body: createOrderSchema }), paymentController.createRazorpayOrder);
 router.post('/orders/razorpay/verify', validate({ body: verifyPaymentSchema }), paymentController.verifyPayment);
 router.post('/orders/upi', validate({ body: createOrderSchema }), paymentController.createManualOrder);
@@ -61,6 +71,13 @@ router.post(
   requireAdmin,
   validate({ params: orderIdParamSchema, body: refundOrderSchema }),
   paymentController.refundOrder,
+);
+
+router.delete(
+  '/admin/orders/:orderId',
+  requireAdmin,
+  validate({ params: orderIdParamSchema }),
+  paymentController.deleteOrder,
 );
 
 router.get('/admin/redeem-codes', requireAdmin, paymentController.listRedeemCodes);

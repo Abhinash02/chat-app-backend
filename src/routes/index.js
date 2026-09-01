@@ -18,6 +18,7 @@ import { settingsRoutes } from '#src/modules/settings/index.js';
 import { statusRoutes } from '#src/modules/status/index.js';
 import { themeRoutes } from '#src/modules/theme/index.js';
 import { userRoutes } from '#src/modules/users/index.js';
+import { supportRoutes } from '#src/modules/support/index.js';
 
 const router = Router();
 
@@ -52,6 +53,7 @@ router.use('/reports', reportRoutes);
 router.use('/feedback', feedbackRoutes);
 router.use('/theme', themeRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/support', supportRoutes);
 router.use('/admin', adminRoutes);
 
 export const apiRoutes = router;

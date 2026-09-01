@@ -47,6 +47,10 @@ const paymentOrderSchema = new mongoose.Schema(
     creditedAt: { type: Date, default: null },
     failureReason: { type: String, default: null },
     expiresAt: { type: Date, default: null },
+
+    /** Generated PDF invoice URL (Cloudinary or stored asset) */
+    invoiceUrl: { type: String, default: null },
+    invoicePublicId: { type: String, default: null },
   },
   { timestamps: true },
 );

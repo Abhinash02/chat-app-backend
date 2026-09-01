@@ -293,6 +293,16 @@ class UserRepository {
       .exec();
   }
 
+  async deductGamePoints(userId, points, { session } = {}) {
+    return UserModel.findOneAndUpdate(
+      { _id: userId, gamePoints: { $gte: points } },
+      { $inc: { gamePoints: -points } },
+      { new: true, session },
+    )
+      .select('gamePoints')
+      .exec();
+  }
+
   async findTopByGamePoints(limit) {
     return UserModel.find({ status: USER_STATUS.ACTIVE, gamePoints: { $gt: 0 } })
       .select('nickname avatarUrl avatarEmoji avatarColor gender gamePoints')

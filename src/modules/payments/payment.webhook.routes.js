@@ -15,4 +15,10 @@ router.post(
   paymentController.handleWebhook,
 );
 
+router.post(
+  '/cashfree',
+  express.raw({ type: 'application/json', limit: '1mb' }),
+  paymentController.handleCashfreeWebhook,
+);
+
 export const paymentWebhookRoutes = router;

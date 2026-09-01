@@ -39,7 +39,15 @@ export async function adminLogin({ email, password, userAgent, ipAddress }) {
   return result;
 }
 
+let cachedDashboardData = null;
+let cachedDashboardExpiry = 0;
+
 export async function getDashboard() {
+  const now = Date.now();
+  if (cachedDashboardData && now < cachedDashboardExpiry) {
+    return cachedDashboardData;
+  }
+
   const since24h = new Date(Date.now() - ONE_DAY_MS);
   const since30d = new Date(Date.now() - 30 * ONE_DAY_MS);
 
@@ -80,7 +88,7 @@ export async function getDashboard() {
   const awaitingVerification =
     paymentsByStatus.find((row) => row._id === PAYMENT_STATUS.AWAITING_VERIFICATION)?.count ?? 0;
 
-  return {
+  const result = {
     users: {
       total: totalUsers,
       male: maleUsers,
@@ -107,6 +115,11 @@ export async function getDashboard() {
       averageScore: Math.round(row.averageScore ?? 0),
     })),
   };
+
+  cachedDashboardData = result;
+  cachedDashboardExpiry = now + 10_000;
+
+  return result;
 }
 
 export async function listUsers({ gender, status, search, role, page, limit }) {

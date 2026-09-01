@@ -99,6 +99,10 @@ class PaymentRepository {
       { $sort: { count: -1 } },
     ]).exec();
   }
+
+  async deleteById(orderId) {
+    return PaymentOrderModel.findByIdAndDelete(orderId).exec();
+  }
 }
 
 export const paymentRepository = new PaymentRepository();
