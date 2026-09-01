@@ -88,6 +88,18 @@ export function createApp() {
     app.use('/uploads', express.static(path.resolve(UPLOAD_ROOT), { maxAge: '365d', index: false }));
   }
 
+  // Root health / info endpoint for Render and ping probes
+  app.get('/', (_req, res) => {
+    res.json({
+      name: 'Vibe Chat API',
+      status: 'online',
+      version: '1.0.0',
+      apiPrefix: env.API_PREFIX,
+      healthCheck: `${env.API_PREFIX}/health`,
+    });
+  });
+  app.head('/', (_req, res) => res.status(200).end());
+
   app.use(env.API_PREFIX, apiRoutes);
 
   app.use(notFoundHandler);
