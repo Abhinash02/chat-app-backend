@@ -243,21 +243,9 @@ export async function joinRoom({ user, roomId, passcode }) {
   return { room: dto, alreadyJoined: false };
 }
 
-/**
- * Leaving as the host ends the room for everyone — a leaderless voice room has
- * no way to moderate itself.
- */
 export async function leaveRoom({ user, roomId }) {
   const room = await roomRepository.findById(roomId);
   if (!room) return { left: true };
-
-  const isHost = String(room.hostId) === String(user.id);
-
-  if (isHost) {
-    await roomRepository.close(roomId);
-    emitToRoom(roomId, SOCKET_EVENT.ROOM_CLOSED, { roomId: String(roomId), reason: 'HOST_LEFT' });
-    return { left: true, roomClosed: true };
-  }
 
   const updated = await roomRepository.removeParticipant({ roomId, userId: user.id });
   if (updated) {
