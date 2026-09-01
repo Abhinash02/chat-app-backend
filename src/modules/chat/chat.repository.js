@@ -48,7 +48,11 @@ class ChatRepository {
   }
 
   async listConversations({ userId, skip = 0, limit = 20, onlyUnread = false }) {
-    const filter = { participantIds: userId, lastMessageAt: { $ne: null } };
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const filter = {
+      participantIds: userId,
+      lastMessageAt: { $ne: null, $gte: sevenDaysAgo },
+    };
     if (onlyUnread) filter[`unreadCounts.${userId}`] = { $gt: 0 };
 
     const [items, total] = await Promise.all([
@@ -235,6 +239,38 @@ class ChatRepository {
 
   async countConversations() {
     return ConversationModel.countDocuments().exec();
+  }
+
+  /**
+   * Automatically deletes conversations and their messages if there has been
+   * no chatting activity for 7 days or more.
+   */
+  async cleanupInactiveConversations(thresholdDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)) {
+    const inactiveConversations = await ConversationModel.find({
+      $or: [
+        { lastMessageAt: { $ne: null, $lt: thresholdDate } },
+        { lastMessageAt: null, updatedAt: { $lt: thresholdDate } },
+      ],
+    })
+      .select('_id')
+      .lean()
+      .exec();
+
+    if (!inactiveConversations || inactiveConversations.length === 0) {
+      return { deletedConversations: 0, deletedMessages: 0 };
+    }
+
+    const inactiveIds = inactiveConversations.map((c) => c._id);
+
+    const [msgResult, convResult] = await Promise.all([
+      MessageModel.deleteMany({ conversationId: { $in: inactiveIds } }).exec(),
+      ConversationModel.deleteMany({ _id: { $in: inactiveIds } }).exec(),
+    ]);
+
+    return {
+      deletedConversations: convResult.deletedCount || 0,
+      deletedMessages: msgResult.deletedCount || 0,
+    };
   }
 }
 
