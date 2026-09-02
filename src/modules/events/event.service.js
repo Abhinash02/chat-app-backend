@@ -32,7 +32,7 @@ function toEventDto(event) {
 /** Broadcast push notification and email to targeted audience */
 export async function broadcastEvent({ event, sendPush = true, sendEmail = true }) {
   try {
-    const userQuery = { status: 'active' };
+    const userQuery = { status: { $ne: 'deleted' } };
     if (event.targetGender === 'male') userQuery.gender = 'male';
     if (event.targetGender === 'female') userQuery.gender = 'female';
 
