@@ -281,19 +281,30 @@ async function deliverMessage({ conversation, created, user, recipientId, pushBo
   // updates the conversation list and unread badge.
   emitToUser(recipientId, SOCKET_EVENT.MESSAGE_NEW, dto);
 
-  // Push only reaches people who are not currently connected. Someone with the
-  // app open already saw the socket event; notifying them twice is noise.
-  if (recipientUser && !isRecipientConnected) {
+  // Dispatch push notification to recipient so lock screen and system tray receive it
+  if (recipientUser) {
     notificationService
       .sendToUser({
         userId: recipientId,
-        title: user.nickname,
+        title: user.nickname || user.name || 'New message',
         body: pushBody,
         data: { type: 'message', conversationId: String(conversation._id) },
       })
       // Delivery is best effort: a failed push must never fail the message
       // that has already been stored and delivered over the socket.
       .catch((error) => logger.warn({ err: error }, 'Message push failed'));
+  }
+
+  // If sender is female and recipient is male, count progress towards earnings reward
+  if (user.gender === 'female' && recipientUser?.gender === 'male') {
+    coinsService
+      .recordGirlChatMessage({
+        senderId: user.id,
+        senderGender: user.gender,
+        recipientGender: recipientUser?.gender,
+        conversationId: conversation._id,
+      })
+      .catch((err) => logger.warn({ err }, 'Failed to record girl chat earning progress'));
   }
 
   return dto;

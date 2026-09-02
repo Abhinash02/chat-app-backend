@@ -41,7 +41,6 @@ router.use(authenticate);
 
 router.post(
   '/devices',
-  requireVerifiedAccount,
   validate({ body: registerDeviceSchema }),
   notificationController.registerDevice,
 );
@@ -49,6 +48,10 @@ router.delete(
   '/devices',
   validate({ body: unregisterDeviceSchema }),
   notificationController.unregisterDevice,
+);
+router.post(
+  '/test',
+  notificationController.sendTestPush,
 );
 
 // ----- Admin: campaigns ---------------------------------------------------
@@ -64,6 +67,16 @@ router.get(
   '/campaigns/:campaignId',
   validate({ params: campaignIdParamSchema }),
   notificationController.getCampaign,
+);
+router.patch(
+  '/campaigns/:campaignId',
+  validate({ params: campaignIdParamSchema }),
+  notificationController.updateCampaign,
+);
+router.delete(
+  '/campaigns/:campaignId',
+  validate({ params: campaignIdParamSchema }),
+  notificationController.deleteCampaign,
 );
 router.post(
   '/campaigns/:campaignId/send',

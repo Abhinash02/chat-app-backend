@@ -23,6 +23,12 @@ const walletSchema = new mongoose.Schema(
     totalSpentCoins: { type: Number, default: 0, min: 0 },
     totalBonusCoins: { type: Number, default: 0, min: 0 },
     lifetimeBilledMessages: { type: Number, default: 0, min: 0 },
+
+    /** Messages sent by girl to boys towards next coin reward */
+    girlChatMessagesCount: { type: Number, default: 0, min: 0 },
+    totalEarnedCoins: { type: Number, default: 0, min: 0 },
+    totalWithdrawnCoins: { type: Number, default: 0, min: 0 },
+    totalWithdrawnRupees: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 );

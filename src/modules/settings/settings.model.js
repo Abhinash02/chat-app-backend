@@ -124,6 +124,47 @@ const appVersionSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const earningsSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: DEFAULT_SETTINGS.earnings.enabled },
+    messagesPerReward: {
+      type: Number,
+      min: 1,
+      max: 1000,
+      default: DEFAULT_SETTINGS.earnings.messagesPerReward,
+    },
+    rewardCoins: {
+      type: Number,
+      min: 1,
+      max: 100,
+      default: DEFAULT_SETTINGS.earnings.rewardCoins,
+    },
+    coinsPerRupee: {
+      type: Number,
+      min: 1,
+      max: 10000,
+      default: DEFAULT_SETTINGS.earnings.coinsPerRupee,
+    },
+    minWithdrawalCoins: {
+      type: Number,
+      min: 1,
+      max: 100000,
+      default: DEFAULT_SETTINGS.earnings.minWithdrawalCoins,
+    },
+    maxWithdrawalCoinsPerDay: {
+      type: Number,
+      min: 1,
+      max: 100000,
+      default: DEFAULT_SETTINGS.earnings.maxWithdrawalCoinsPerDay,
+    },
+    payoutProvider: {
+      type: String,
+      default: DEFAULT_SETTINGS.earnings.payoutProvider,
+    },
+  },
+  { _id: false },
+);
+
 const settingsSchema = new mongoose.Schema(
   {
     key: { type: String, default: SETTINGS_SINGLETON_KEY, unique: true, immutable: true },
@@ -135,6 +176,7 @@ const settingsSchema = new mongoose.Schema(
     payments: { type: paymentsSchema, default: () => ({}) },
     moderation: { type: moderationSchema, default: () => ({}) },
     appVersion: { type: appVersionSchema, default: () => ({}) },
+    earnings: { type: earningsSchema, default: () => ({}) },
     updatedByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true },

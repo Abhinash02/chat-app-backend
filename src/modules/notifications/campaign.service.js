@@ -146,6 +146,46 @@ export async function queueCampaign({ campaignId, scheduledAt = null }) {
   return updated;
 }
 
+export async function updateCampaign({ campaignId, admin, name, channel, audience, push, email, repeat }) {
+  const existing = await notificationRepository.findCampaignById(campaignId);
+  if (!existing) throw new NotFoundError('Campaign not found', 'CAMPAIGN_NOT_FOUND');
+
+  if (existing.status === CAMPAIGN_STATUS.SENDING) {
+    throw new ConflictError('Cannot edit a campaign that is currently sending', 'CAMPAIGN_SENDING');
+  }
+
+  const update = {};
+  if (name !== undefined) update.name = name;
+  if (channel !== undefined) update.channel = channel;
+  if (audience !== undefined) update.audience = audience;
+  if (push !== undefined) update.push = push;
+  if (email !== undefined) update.email = email;
+
+  if (repeat !== undefined) {
+    const isRecurring = repeat?.rule && repeat.rule !== CAMPAIGN_REPEAT.NONE;
+    update.repeat = isRecurring
+      ? { ...existing.repeat, ...repeat, isEnabled: repeat?.isEnabled ?? true, nextRunAt: computeNextRun({ ...repeat, isEnabled: true }) }
+      : { ...existing.repeat, ...repeat, rule: CAMPAIGN_REPEAT.NONE, nextRunAt: null };
+  }
+
+  const updated = await notificationRepository.updateCampaign(campaignId, { $set: update });
+  logger.info({ campaignId, adminId: admin.id }, 'Campaign updated');
+  return updated;
+}
+
+export async function deleteCampaign(campaignId) {
+  const existing = await notificationRepository.findCampaignById(campaignId);
+  if (!existing) throw new NotFoundError('Campaign not found', 'CAMPAIGN_NOT_FOUND');
+
+  if (existing.status === CAMPAIGN_STATUS.SENDING) {
+    throw new ConflictError('Cannot delete a campaign that is currently sending. Please cancel it first.', 'CAMPAIGN_SENDING');
+  }
+
+  await notificationRepository.deleteCampaign(campaignId);
+  logger.info({ campaignId }, 'Campaign deleted');
+  return { deleted: true, id: campaignId };
+}
+
 export async function cancelCampaign(campaignId) {
   const campaign = await notificationRepository.findCampaignById(campaignId);
   if (!campaign) throw new NotFoundError('Campaign not found', 'CAMPAIGN_NOT_FOUND');
@@ -264,12 +304,36 @@ export async function sendCampaignBatch(campaign) {
   }
 
   const lastUserId = recipients[recipients.length - 1]._id;
-  await notificationRepository.incrementCampaignStats(campaign._id, increments, lastUserId);
+  const updatedCampaign = await notificationRepository.incrementCampaignStats(campaign._id, increments, lastUserId);
+
+  // Broadcast live progress to Admin Panel WebSocket & active users
+  import('#src/realtime/emitter.js')
+    .then(({ emitToAdmin, emitToAll }) => {
+      emitToAdmin('admin:campaign_progress', {
+        campaignId: String(campaign._id),
+        stats: updatedCampaign?.stats,
+        status: updatedCampaign?.status,
+        increments,
+        isLive: true,
+      });
+
+      // Also broadcast in-app live announcement to active users
+      if (campaign.push?.title) {
+        emitToAll('app:announcement', {
+          id: String(campaign._id),
+          title: campaign.push.title,
+          body: campaign.push.body,
+          deepLink: campaign.push.deepLink,
+        });
+      }
+    })
+    .catch(() => undefined);
 
   return {
     done: recipients.length < CAMPAIGN_BATCH_SIZE,
     processed: recipients.length,
     increments,
+    stats: updatedCampaign?.stats,
   };
 }
 
@@ -443,6 +507,8 @@ export const campaignService = {
   startDueRecurringCampaigns,
   previewAudience,
   createCampaign,
+  updateCampaign,
+  deleteCampaign,
   queueCampaign,
   cancelCampaign,
   sendCampaignBatch,

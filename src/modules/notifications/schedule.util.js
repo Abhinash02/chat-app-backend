@@ -79,6 +79,9 @@ function partsInZone(instant, timezone) {
 /**
  * The next firing at or after `from`.
  *
+ * Supports multiple time slots per day (e.g. 8:00 AM and 5:00 PM)
+ * and multiple weekdays for weekly schedules.
+ *
  * Returns null for a non-repeating campaign, so callers can treat "no schedule"
  * and "schedule finished" identically.
  */
@@ -88,53 +91,70 @@ export function computeNextRun(repeat, from = new Date()) {
   const timezone = repeat.timezone || 'Asia/Kolkata';
   const { year, month, day, weekday } = partsInZone(from, timezone);
 
-  if (repeat.rule === CAMPAIGN_REPEAT.DAILY) {
-    const today = instantFor({ year, month, day, hour: repeat.hour, minute: repeat.minute, timezone });
-    if (today > from) return today;
+  const timeSlots =
+    Array.isArray(repeat.times) && repeat.times.length > 0
+      ? repeat.times
+      : [{ hour: Number(repeat.hour ?? 9), minute: Number(repeat.minute ?? 0) }];
 
-    // Already past today's slot, so aim at tomorrow.
-    return instantFor({ year, month, day: day + 1, hour: repeat.hour, minute: repeat.minute, timezone });
+  const targetWeekdays =
+    repeat.rule === CAMPAIGN_REPEAT.DAILY
+      ? [0, 1, 2, 3, 4, 5, 6]
+      : Array.isArray(repeat.weekdays) && repeat.weekdays.length > 0
+        ? repeat.weekdays
+        : [Number(repeat.weekday ?? 1)];
+
+  const candidates = [];
+
+  // Look up to 14 days into the future to find next valid time slot
+  for (let offset = 0; offset <= 14; offset++) {
+    const checkWeekday = (weekday + offset) % 7;
+    if (!targetWeekdays.includes(checkWeekday)) continue;
+
+    for (const slot of timeSlots) {
+      const candidate = instantFor({
+        year,
+        month,
+        day: day + offset,
+        hour: Number(slot.hour),
+        minute: Number(slot.minute),
+        timezone,
+      });
+
+      if (candidate.getTime() > from.getTime()) {
+        candidates.push(candidate);
+      }
+    }
   }
 
-  if (repeat.rule === CAMPAIGN_REPEAT.WEEKLY) {
-    const target = repeat.weekday ?? 1;
-    let daysAhead = (target - weekday + 7) % 7;
+  if (candidates.length === 0) return null;
 
-    const candidate = instantFor({
-      year,
-      month,
-      day: day + daysAhead,
-      hour: repeat.hour,
-      minute: repeat.minute,
-      timezone,
-    });
-
-    // If today is the day but the time has passed, go a full week out.
-    if (candidate <= from) daysAhead += 7;
-    if (candidate > from) return candidate;
-
-    return instantFor({
-      year,
-      month,
-      day: day + daysAhead,
-      hour: repeat.hour,
-      minute: repeat.minute,
-      timezone,
-    });
-  }
-
-  return null;
+  candidates.sort((a, b) => a.getTime() - b.getTime());
+  return candidates[0];
 }
 
-/** Human summary for the admin panel, e.g. "Every day at 19:00 (Asia/Kolkata)". */
+/** Human summary for the admin panel, e.g. "Every day at 08:00, 17:00 (Asia/Kolkata)". */
 export function describeSchedule(repeat) {
   if (!repeat || repeat.rule === CAMPAIGN_REPEAT.NONE) return 'Sends once';
 
-  const time = `${String(repeat.hour).padStart(2, '0')}:${String(repeat.minute).padStart(2, '0')}`;
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const timeSlots =
+    Array.isArray(repeat.times) && repeat.times.length > 0
+      ? repeat.times
+      : [{ hour: repeat.hour ?? 9, minute: repeat.minute ?? 0 }];
 
-  const when =
-    repeat.rule === CAMPAIGN_REPEAT.DAILY ? 'Every day' : `Every ${days[repeat.weekday ?? 1]}`;
+  const timeStr = timeSlots
+    .map((t) => `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`)
+    .join(', ');
 
-  return `${when} at ${time} (${repeat.timezone})${repeat.isEnabled ? '' : ' — paused'}`;
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  let when = 'Every day';
+  if (repeat.rule === CAMPAIGN_REPEAT.WEEKLY) {
+    const days =
+      Array.isArray(repeat.weekdays) && repeat.weekdays.length > 0
+        ? repeat.weekdays.map((d) => dayNames[d]).join(', ')
+        : dayNames[repeat.weekday ?? 1];
+    when = `Every ${days}`;
+  }
+
+  return `${when} at ${timeStr} (${repeat.timezone || 'Asia/Kolkata'})${repeat.isEnabled ? '' : ' — paused'}`;
 }

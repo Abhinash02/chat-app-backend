@@ -27,7 +27,13 @@ export const expoPushProvider = {
   name: 'expo',
 
   isValidToken(token) {
-    return typeof token === 'string' && EXPO_TOKEN_PATTERN.test(token);
+    if (typeof token !== 'string' || !token.trim()) return false;
+    return (
+      EXPO_TOKEN_PATTERN.test(token) ||
+      token.startsWith('ExponentPushToken[') ||
+      token.startsWith('ExpoPushToken[') ||
+      /^[a-zA-Z0-9_\-:.]{15,}$/.test(token)
+    );
   },
 
   async send(messages) {

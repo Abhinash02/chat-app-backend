@@ -19,6 +19,16 @@ export const notificationController = {
     return sendSuccess(res, result);
   }),
 
+  sendTestPush: asyncHandler(async (req, res) => {
+    const result = await notificationService.sendToUser({
+      userId: req.user.id,
+      title: req.body?.title || 'Test Notification 🚀',
+      body: req.body?.body || 'Push notifications are working perfectly on Vibe!',
+      data: req.body?.data || { type: 'test' },
+    });
+    return sendSuccess(res, result);
+  }),
+
   /**
    * Public, unauthenticated, and reachable from an email client. Responds with
    * a small HTML page rather than JSON because a person is reading it.
@@ -61,6 +71,20 @@ export const notificationController = {
   getCampaign: asyncHandler(async (req, res) => {
     const campaign = await campaignService.getCampaign(req.params.campaignId);
     return sendSuccess(res, campaign);
+  }),
+
+  updateCampaign: asyncHandler(async (req, res) => {
+    const campaign = await campaignService.updateCampaign({
+      campaignId: req.params.campaignId,
+      admin: req.user,
+      ...req.body,
+    });
+    return sendSuccess(res, campaign);
+  }),
+
+  deleteCampaign: asyncHandler(async (req, res) => {
+    const result = await campaignService.deleteCampaign(req.params.campaignId);
+    return sendSuccess(res, result);
   }),
 
   queueCampaign: asyncHandler(async (req, res) => {

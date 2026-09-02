@@ -101,6 +101,17 @@ export async function broadcastEvent({ event, sendPush = true, sendEmail = true 
       emailsSent = emailUsers.length;
     }
 
+    // 3. Send In-App Realtime Socket Announcement to all active users
+    emitToAll('app:event_published', {
+      id: String(event._id),
+      title: `🎉 ${event.title}`,
+      description: event.description,
+      badgeText: event.badgeText,
+      rewardCoins: event.rewardCoins || 0,
+      discountPercent: event.discountPercent || 0,
+      actionUrl: event.actionUrl || 'coins',
+    });
+
     return { pushSent, emailsSent };
   } catch (error) {
     logger.error({ err: error, eventId: event._id }, 'Error broadcasting event');

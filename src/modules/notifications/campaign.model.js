@@ -15,13 +15,23 @@ import {
  * the audience across a daylight-saving change. Storing UTC would silently
  * shift the send by an hour twice a year.
  */
+const repeatTimeSlotSchema = new mongoose.Schema(
+  {
+    hour: { type: Number, min: 0, max: 23, required: true },
+    minute: { type: Number, min: 0, max: 59, required: true },
+  },
+  { _id: false },
+);
+
 const repeatSchema = new mongoose.Schema(
   {
     rule: { type: String, enum: Object.values(CAMPAIGN_REPEAT), default: CAMPAIGN_REPEAT.NONE },
     hour: { type: Number, min: 0, max: 23, default: 9 },
     minute: { type: Number, min: 0, max: 59, default: 0 },
+    times: { type: [repeatTimeSlotSchema], default: undefined },
     /** 0 = Sunday. Only read for a weekly rule. */
     weekday: { type: Number, min: 0, max: 6, default: 1 },
+    weekdays: { type: [Number], default: undefined },
     timezone: { type: String, default: 'Asia/Kolkata' },
 
     /** Cleared when an admin pauses the schedule without deleting it. */

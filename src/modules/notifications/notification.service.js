@@ -71,13 +71,14 @@ export async function unregisterDevice({ userId, token }) {
 export async function sendToUser({ userId, title, body, data = {}, channelId = PUSH_CHANNEL.MESSAGES }) {
   try {
     const user = await userRepository.findById(userId);
-    if (!user?.preferences?.pushEnabled) return { sent: 0, skipped: 'PUSH_DISABLED' };
+    const pushEnabled = user?.preferences?.pushEnabled !== false;
+    if (!pushEnabled) return { sent: 0, skipped: 'PUSH_DISABLED' };
 
     const devices = await notificationRepository.findActiveTokensForUsers([userId]);
     if (devices.length === 0) return { sent: 0, skipped: 'NO_DEVICES' };
 
-    const sound = user.preferences.soundEnabled
-      ? (user.preferences.notificationSound ?? 'default')
+    const sound = user?.preferences?.soundEnabled !== false
+      ? (user?.preferences?.notificationSound ?? 'default')
       : null;
 
     const provider = getPushProvider();

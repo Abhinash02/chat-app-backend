@@ -93,6 +93,41 @@ export function errorHandler(error, req, res, _next) {
     logger.error(logContext, 'Unhandled application error');
   }
 
+  // Record into system logs database for Admin dashboard
+  import('#src/modules/system-logs/system-log.service.js')
+    .then(({ systemLogService }) => {
+      systemLogService.createLog({
+        level: normalized.isOperational && normalized.statusCode < 500 ? 'warn' : 'error',
+        category: req.originalUrl?.includes('/payments')
+          ? 'payments'
+          : req.originalUrl?.includes('/withdrawals')
+            ? 'withdrawals'
+            : req.originalUrl?.includes('/notifications')
+              ? 'campaigns'
+              : req.originalUrl?.includes('/auth')
+                ? 'auth'
+                : req.originalUrl?.includes('/chat')
+                  ? 'chat'
+                  : 'system',
+        action: normalized.code || 'HTTP_ERROR',
+        message: normalized.message || error?.message || 'Server error',
+        stack: error?.stack || null,
+        details: {
+          code: normalized.code,
+          details: normalized.details,
+          requestId: req.id,
+          query: req.query,
+        },
+        userId: req.user?.id || null,
+        userEmail: req.user?.email || null,
+        ip: req.ip || req.socket?.remoteAddress,
+        path: req.originalUrl,
+        method: req.method,
+        statusCode: normalized.statusCode,
+      });
+    })
+    .catch(() => undefined);
+
   const details = normalized.isOperational || !env.isProduction ? normalized.details : undefined;
 
   return sendError(res, {

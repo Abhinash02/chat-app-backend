@@ -37,6 +37,7 @@ export function createApp() {
 
         // Allow wildcard or explicit matches
         if (
+          !env.isProduction ||
           env.corsOrigins.includes('*') ||
           env.corsOrigins.includes(origin) ||
           origin.endsWith('.vercel.app') ||
@@ -46,15 +47,11 @@ export function createApp() {
           return callback(null, true);
         }
 
-        return callback(
-          new ForbiddenError(
-            `Origin ${origin} is not allowed. Add it to CORS_ORIGINS.`,
-            'ORIGIN_NOT_ALLOWED',
-          ),
-        );
+        return callback(null, false);
       },
       credentials: true,
       methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'baggage', 'sentry-trace'],
     }),
   );
 
@@ -96,6 +93,9 @@ export function createApp() {
   app.head('/', (_req, res) => res.status(200).end());
 
   app.use(env.API_PREFIX, apiRoutes);
+  if (env.API_PREFIX !== '/api') {
+    app.use('/api', apiRoutes);
+  }
 
   app.use(notFoundHandler);
   app.use(errorHandler);

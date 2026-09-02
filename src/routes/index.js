@@ -19,6 +19,8 @@ import { statusRoutes } from '#src/modules/status/index.js';
 import { themeRoutes } from '#src/modules/theme/index.js';
 import { userRoutes } from '#src/modules/users/index.js';
 import { supportRoutes } from '#src/modules/support/index.js';
+import { withdrawalRoutes } from '#src/modules/withdrawals/index.js';
+import { systemLogRoutes } from '#src/modules/system-logs/index.js';
 
 const router = Router();
 
@@ -54,6 +56,8 @@ router.use('/feedback', feedbackRoutes);
 router.use('/theme', themeRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/support', supportRoutes);
+router.use('/withdrawals', withdrawalRoutes);
+router.use('/system-logs', systemLogRoutes);
 router.use('/admin', adminRoutes);
 
 export const apiRoutes = router;

@@ -19,6 +19,7 @@ import { paymentRepository } from '#src/modules/payments/payment.repository.js';
 import { ORDER_EXPIRY_MINUTES, PAYMENT_STATUS } from '#src/modules/payments/payment.constants.js';
 import { emitToAdmin } from '#src/realtime/emitter.js';
 import { SOCKET_EVENT } from '#src/realtime/events.js';
+import { notificationService } from '#src/modules/notifications/notification.service.js';
 import { generateAndSaveOrderInvoicePdf } from '#src/modules/payments/invoice-pdf.service.js';
 
 function toOrderDto(order) {
@@ -98,6 +99,16 @@ async function creditOrder(order) {
     { orderId: String(order._id), coins: order.coins + order.bonusCoins, alreadyCredited },
     'Coin purchase credited',
   );
+
+  // Send push notification to user
+  notificationService
+    .sendToUser({
+      userId: order.userId,
+      title: '🎉 Coins Added!',
+      body: `Your recharge for ${order.packageName || 'Coins'} succeeded! +${order.coins + order.bonusCoins} coins added.`,
+      data: { type: 'coins', orderId: String(order._id) },
+    })
+    .catch((err) => logger.warn({ err }, 'Payment success push notification failed'));
 
   // Generate & save PDF invoice to Cloudinary / DB in the background
   generateAndSaveOrderInvoicePdf(order._id).catch((err) => {
@@ -692,6 +703,17 @@ export async function rejectManualPayment({ orderId, adminId, reason }) {
 
   logger.info({ orderId: String(order._id), adminId }, 'Manual payment rejected');
   emitToAdmin(SOCKET_EVENT.ADMIN_PAYMENT_UPDATED, { orderId: String(order._id), status: 'rejected' });
+
+  // Send push notification to user
+  notificationService
+    .sendToUser({
+      userId: order.userId,
+      title: '⚠️ Payment Proof Rejected',
+      body: reason ? `Your UPI payment proof could not be verified: ${reason}` : 'Your UPI payment proof could not be verified.',
+      data: { type: 'payment_rejected', orderId: String(order._id) },
+    })
+    .catch((err) => logger.warn({ err }, 'Payment rejection push notification failed'));
+
   return toOrderDto(updated);
 }
 

@@ -87,6 +87,18 @@ export const updateSettingsSchema = z
       })
       .strict()
       .optional(),
+    earnings: z
+      .object({
+        enabled: z.boolean().optional(),
+        messagesPerReward: z.number().int().min(1).max(1000).optional(),
+        rewardCoins: z.number().int().min(1).max(100).optional(),
+        coinsPerRupee: z.number().int().min(1).max(10000).optional(),
+        minWithdrawalCoins: z.number().int().min(1).max(100000).optional(),
+        maxWithdrawalCoinsPerDay: z.number().int().min(1).max(100000).optional(),
+        payoutProvider: z.string().trim().max(50).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {

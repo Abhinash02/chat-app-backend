@@ -89,6 +89,10 @@ class NotificationRepository {
     return CampaignModel.findByIdAndUpdate(campaignId, update, { new: true }).lean().exec();
   }
 
+  async deleteCampaign(campaignId) {
+    return CampaignModel.findByIdAndDelete(campaignId).lean().exec();
+  }
+
   /**
    * Moves a campaign into `sending` only if it is still queued, so two worker
    * ticks (or two server instances) cannot both start the same send.

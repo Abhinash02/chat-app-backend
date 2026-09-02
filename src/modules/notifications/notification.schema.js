@@ -14,19 +14,24 @@ import {
  * a UTC instant, so "every day at 7pm" stays 7pm across a daylight-saving
  * change instead of drifting by an hour twice a year.
  */
+export const repeatTimeSchema = z.object({
+  hour: z.number().int().min(0).max(23),
+  minute: z.number().int().min(0).max(59),
+});
+
 export const repeatSchema = z
   .object({
     rule: z.nativeEnum(CAMPAIGN_REPEAT).default(CAMPAIGN_REPEAT.NONE),
-    hour: z.number().int().min(0).max(23).default(9),
-    minute: z.number().int().min(0).max(59).default(0),
+    hour: z.number().int().min(0).max(23).optional().default(9),
+    minute: z.number().int().min(0).max(59).optional().default(0),
+    times: z.array(repeatTimeSchema).optional(),
     weekday: z.number().int().min(0).max(6).optional(),
+    weekdays: z.array(z.number().int().min(0).max(6)).optional(),
     timezone: z
       .string()
       .trim()
       .max(64)
       .refine((zone) => {
-        // Reject a zone the server cannot resolve, rather than storing it and
-        // failing every time the scheduler runs.
         try {
           new Intl.DateTimeFormat('en-US', { timeZone: zone });
           return true;

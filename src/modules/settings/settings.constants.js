@@ -86,4 +86,13 @@ export const DEFAULT_SETTINGS = Object.freeze({
     appStoreUrl: 'https://apps.apple.com/app/id123456789',
     updateMessage: 'A new and improved version of Vibe is available. Update now for the best experience!',
   },
+  earnings: {
+    enabled: true,
+    messagesPerReward: 25,
+    rewardCoins: 1,
+    coinsPerRupee: 25,
+    minWithdrawalCoins: 25,
+    maxWithdrawalCoinsPerDay: 5000,
+    payoutProvider: 'cashfree',
+  },
 });

@@ -132,6 +132,47 @@ class WalletRepository {
     return WalletModel.find(filter).select('userId lastDailyBonusAt').limit(limit).lean().exec();
   }
 
+  async incrementGirlChatMessageCount(userId, count = 1) {
+    return WalletModel.findOneAndUpdate(
+      { userId },
+      { $inc: { girlChatMessagesCount: count } },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    )
+      .lean()
+      .exec();
+  }
+
+  async awardGirlChatReward(userId, { rewardCoins, messagesPerReward }) {
+    return WalletModel.findOneAndUpdate(
+      { userId },
+      {
+        $inc: {
+          coinBalance: rewardCoins,
+          totalEarnedCoins: rewardCoins,
+          girlChatMessagesCount: -messagesPerReward,
+        },
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    )
+      .lean()
+      .exec();
+  }
+
+  async recordWithdrawalSuccess(userId, { coins, amountInRupees }) {
+    return WalletModel.findOneAndUpdate(
+      { userId },
+      {
+        $inc: {
+          totalWithdrawnCoins: coins,
+          totalWithdrawnRupees: amountInRupees,
+        },
+      },
+      { new: true },
+    )
+      .lean()
+      .exec();
+  }
+
   async aggregateTotals() {
     const [totals] = await WalletModel.aggregate([
       {
@@ -141,6 +182,9 @@ class WalletRepository {
           totalPurchasedCoins: { $sum: '$totalPurchasedCoins' },
           totalSpentCoins: { $sum: '$totalSpentCoins' },
           totalBonusCoins: { $sum: '$totalBonusCoins' },
+          totalEarnedCoins: { $sum: '$totalEarnedCoins' },
+          totalWithdrawnCoins: { $sum: '$totalWithdrawnCoins' },
+          totalWithdrawnRupees: { $sum: '$totalWithdrawnRupees' },
           walletCount: { $sum: 1 },
         },
       },
@@ -152,6 +196,9 @@ class WalletRepository {
         totalPurchasedCoins: 0,
         totalSpentCoins: 0,
         totalBonusCoins: 0,
+        totalEarnedCoins: 0,
+        totalWithdrawnCoins: 0,
+        totalWithdrawnRupees: 0,
         walletCount: 0,
       }
     );

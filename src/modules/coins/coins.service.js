@@ -24,6 +24,8 @@ const CREDIT_TYPES = new Set([
   COIN_TRANSACTION_TYPE.DAILY_BONUS,
   COIN_TRANSACTION_TYPE.SIGNUP_BONUS,
   COIN_TRANSACTION_TYPE.GAME_REWARD,
+  COIN_TRANSACTION_TYPE.CHAT_EARNING,
+  COIN_TRANSACTION_TYPE.WITHDRAWAL_REFUND,
   COIN_TRANSACTION_TYPE.ADMIN_CREDIT,
   COIN_TRANSACTION_TYPE.REFUND,
 ]);
@@ -73,7 +75,13 @@ function dailyBonusStatus({ wallet, coinSettings, gender, now = new Date() }) {
  * The payload behind the coin counter in the app header. `estimatedMessagesRemaining`
  * is null for accounts that are never billed, which the UI renders as "unlimited".
  */
-export function buildWalletSnapshot({ wallet, coinSettings, gender, billing = null }) {
+export function buildWalletSnapshot({
+  wallet,
+  coinSettings,
+  earningsSettings = {},
+  gender,
+  billing = null,
+}) {
   const charged = isChargedGender(gender, coinSettings);
   const { messagesPerBlock, coinsPerBlock } = coinSettings;
 
@@ -81,6 +89,9 @@ export function buildWalletSnapshot({ wallet, coinSettings, gender, billing = nu
   const estimatedMessagesRemaining = charged
     ? wallet.messageCredits + affordableBlocks * messagesPerBlock
     : null;
+
+  const coinsPerRupee = earningsSettings.coinsPerRupee || 25;
+  const withdrawableRupees = ((wallet.coinBalance ?? 0) / coinsPerRupee).toFixed(2);
 
   return {
     coinBalance: wallet.coinBalance,
@@ -90,10 +101,26 @@ export function buildWalletSnapshot({ wallet, coinSettings, gender, billing = nu
     isUnlimited: !charged,
     pricing: { messagesPerBlock, coinsPerBlock },
     estimatedMessagesRemaining,
+    earnings: {
+      enabled: earningsSettings.enabled ?? true,
+      messagesPerReward: earningsSettings.messagesPerReward ?? 25,
+      rewardCoins: earningsSettings.rewardCoins ?? 1,
+      coinsPerRupee,
+      minWithdrawalCoins: earningsSettings.minWithdrawalCoins ?? 25,
+      maxWithdrawalCoinsPerDay: earningsSettings.maxWithdrawalCoinsPerDay ?? 5000,
+      currentProgress: wallet.girlChatMessagesCount ?? 0,
+      totalEarnedCoins: wallet.totalEarnedCoins ?? 0,
+      totalWithdrawnCoins: wallet.totalWithdrawnCoins ?? 0,
+      totalWithdrawnRupees: wallet.totalWithdrawnRupees ?? 0,
+      withdrawableRupees: Number(withdrawableRupees),
+    },
     totals: {
       purchased: wallet.totalPurchasedCoins ?? 0,
       spent: wallet.totalSpentCoins ?? 0,
       bonus: wallet.totalBonusCoins ?? 0,
+      earned: wallet.totalEarnedCoins ?? 0,
+      withdrawnCoins: wallet.totalWithdrawnCoins ?? 0,
+      withdrawnRupees: wallet.totalWithdrawnRupees ?? 0,
       billedMessages: wallet.lifetimeBilledMessages ?? 0,
     },
     dailyBonus: dailyBonusStatus({ wallet, coinSettings, gender }),
@@ -136,12 +163,97 @@ export async function ensureWallet({ userId, gender }) {
 }
 
 export async function getWalletSnapshot({ userId, gender }) {
-  const [coinSettings, wallet] = await Promise.all([
-    settingsService.getCoinSettings(),
+  const [settings, wallet] = await Promise.all([
+    settingsService.getSettings(),
     walletRepository.findOrCreate(userId, {}),
   ]);
 
-  return buildWalletSnapshot({ wallet, coinSettings, gender });
+  return buildWalletSnapshot({
+    wallet,
+    coinSettings: settings.coins,
+    earningsSettings: settings.earnings,
+    gender,
+  });
+}
+
+/**
+ * Records a message sent by a girl to a boy.
+ * When the count reaches `messagesPerReward` (default 25), awards `rewardCoins` (default 1).
+ */
+export async function recordGirlChatMessage({
+  senderId,
+  senderGender,
+  recipientGender,
+  conversationId,
+}) {
+  if (senderGender !== 'female' || recipientGender !== 'male') {
+    return null;
+  }
+
+  const settings = await settingsService.getSettings();
+  const earningsSettings = settings.earnings || {};
+
+  if (earningsSettings.enabled === false) {
+    return null;
+  }
+
+  const messagesPerReward = earningsSettings.messagesPerReward || 25;
+  const rewardCoins = earningsSettings.rewardCoins || 1;
+
+  // Increment message count
+  const updatedWallet = await walletRepository.incrementGirlChatMessageCount(senderId, 1);
+  const currentCount = updatedWallet.girlChatMessagesCount || 0;
+
+  if (currentCount >= messagesPerReward) {
+    // Reward threshold reached!
+    const rewardedWallet = await walletRepository.awardGirlChatReward(senderId, {
+      rewardCoins,
+      messagesPerReward,
+    });
+
+    await coinTransactionRepository.create({
+      userId: senderId,
+      type: COIN_TRANSACTION_TYPE.CHAT_EARNING,
+      direction: COIN_TRANSACTION_DIRECTION.CREDIT,
+      amount: rewardCoins,
+      balanceAfter: rewardedWallet.coinBalance,
+      description: `Earned ${rewardCoins} coin for sending ${messagesPerReward} messages to boys`,
+      referenceId: conversationId ? String(conversationId) : null,
+      metadata: { messagesPerReward, rewardCoins },
+    });
+
+    const snapshot = buildWalletSnapshot({
+      wallet: rewardedWallet,
+      coinSettings: settings.coins,
+      earningsSettings,
+      gender: senderGender,
+    });
+
+    pushWalletUpdate({ userId: senderId, snapshot });
+
+    emitToUser(senderId, 'coins:earned', {
+      amount: rewardCoins,
+      reason: `Earned ${rewardCoins} coin for ${messagesPerReward} messages with boys!`,
+      wallet: snapshot,
+    });
+
+    logger.info(
+      { userId: senderId, rewardCoins, messagesPerReward },
+      'Female user earned coin reward from chatting with male user',
+    );
+
+    return { rewarded: true, rewardCoins, snapshot };
+  }
+
+  const snapshot = buildWalletSnapshot({
+    wallet: updatedWallet,
+    coinSettings: settings.coins,
+    earningsSettings,
+    gender: senderGender,
+  });
+  pushWalletUpdate({ userId: senderId, snapshot });
+
+  return { rewarded: false, currentProgress: currentCount, messagesPerReward };
 }
 
 /**
@@ -506,6 +618,7 @@ export const coinsService = {
   ensureWallet,
   getWalletSnapshot,
   authorizeMessage,
+  recordGirlChatMessage,
   consumeFreeTalk,
   creditCoins,
   debitCoins,
