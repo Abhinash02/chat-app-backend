@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import {
   BadRequestError,
   ForbiddenError,
@@ -35,7 +36,7 @@ export async function requestWithdrawal({ user, coins, payoutMethod, upiId, bank
     throw new BadRequestError(`Minimum withdrawal is ${minCoins} coins`, 'MIN_WITHDRAWAL_NOT_MET');
   }
 
-  const coinsPerRupee = earnings.coinsPerRupee || 25;
+  const coinsPerRupee = earnings.coinsPerRupee || 1;
   const amountInRupees = Number((coins / coinsPerRupee).toFixed(2));
   const amountInPaise = Math.round(amountInRupees * 100);
 
@@ -84,7 +85,7 @@ export async function requestWithdrawal({ user, coins, payoutMethod, upiId, bank
   return {
     withdrawal,
     wallet: snapshot,
-    message: `Withdrawal request for ₹${amountInRupees} submitted! It will be credited once approved by admin.`,
+    message: `Withdrawal request for ₹${amountInRupees} submitted! The amount will be verified and credited to your account within 5–7 working days.`,
   };
 }
 
@@ -160,10 +161,16 @@ export async function approveWithdrawal({ withdrawalId, adminUser, mode = 'cashf
     }
   }
 
+  const adminRawId = adminUser?._id || adminUser?.id;
+  const validAdminId =
+    adminRawId && mongoose.Types.ObjectId.isValid(String(adminRawId))
+      ? new mongoose.Types.ObjectId(String(adminRawId))
+      : null;
+
   const updated = await withdrawalRepository.updateById(withdrawalId, {
     status: finalStatus,
     adminNotes: adminNotes || (mode === 'manual' ? 'Manually processed by admin' : 'Processed via Cashfree Payout'),
-    processedByAdminId: adminUser.id,
+    processedByAdminId: validAdminId,
     processedAt: new Date(),
     provider: mode === 'cashfree' ? 'cashfree' : 'manual',
     cashfreeTransferId,
@@ -196,7 +203,7 @@ export async function approveWithdrawal({ withdrawalId, adminUser, mode = 'cashf
     .catch((err) => logger.warn({ err }, 'Withdrawal approval notification failed'));
 
   logger.info(
-    { withdrawalId, adminId: adminUser.id, amountInRupees: withdrawal.amountInRupees, mode },
+    { withdrawalId, adminId: adminRawId, amountInRupees: withdrawal.amountInRupees, mode },
     'Admin approved and completed withdrawal',
   );
 
@@ -217,11 +224,17 @@ export async function rejectWithdrawal({ withdrawalId, adminUser, reason, adminN
     throw new BadRequestError(`Cannot reject a withdrawal with status "${withdrawal.status}"`, 'INVALID_STATUS');
   }
 
+  const adminRawId = adminUser?._id || adminUser?.id;
+  const validAdminId =
+    adminRawId && mongoose.Types.ObjectId.isValid(String(adminRawId))
+      ? new mongoose.Types.ObjectId(String(adminRawId))
+      : null;
+
   const updated = await withdrawalRepository.updateById(withdrawalId, {
     status: WITHDRAWAL_STATUS.REJECTED,
     rejectionReason: reason,
     adminNotes: adminNotes || null,
-    processedByAdminId: adminUser.id,
+    processedByAdminId: validAdminId,
     processedAt: new Date(),
   });
 

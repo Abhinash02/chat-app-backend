@@ -90,7 +90,7 @@ export function buildWalletSnapshot({
     ? wallet.messageCredits + affordableBlocks * messagesPerBlock
     : null;
 
-  const coinsPerRupee = earningsSettings.coinsPerRupee || 25;
+  const coinsPerRupee = earningsSettings.coinsPerRupee || 1;
   const withdrawableRupees = ((wallet.coinBalance ?? 0) / coinsPerRupee).toFixed(2);
 
   return {

@@ -1,5 +1,6 @@
 import { flattenToDotPaths } from '#src/common/utils/object.util.js';
 import { settingsRepository } from '#src/modules/settings/settings.repository.js';
+import { emitToAll } from '#src/realtime/emitter.js';
 
 /**
  * Settings are read on every message send, presence tick and discovery query,
@@ -102,6 +103,16 @@ export async function updateSettings(patch, adminId) {
   const update = flattenToDotPaths(patch);
   const updated = await settingsRepository.update(update, adminId);
   invalidateSettingsCache();
+
+  try {
+    emitToAll('settings:updated', { settings: updated });
+    if (updated?.earnings) {
+      emitToAll('earnings:updated', { earnings: updated.earnings });
+    }
+  } catch (err) {
+    // Socket broadcast errors should not block settings persistence
+  }
+
   return updated;
 }
 
