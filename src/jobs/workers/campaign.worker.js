@@ -13,7 +13,7 @@ import {
 // hammering the database when nothing is due.
 const TICK_INTERVAL_MS = 10_000;
 /** A send that has not progressed in this long is assumed dead and requeued. */
-const STUCK_AFTER_MS = 2 * ONE_HOUR_MS;
+const STUCK_AFTER_MS = process.env.NODE_ENV === 'production' ? 5 * 60_000 : 30_000;
 
 let isRunning = false;
 

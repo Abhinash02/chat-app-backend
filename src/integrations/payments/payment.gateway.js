@@ -28,5 +28,6 @@
 export const PAYMENT_PROVIDER = Object.freeze({
   RAZORPAY: 'razorpay',
   CASHFREE: 'cashfree',
+  STRIPE: 'stripe',
   MANUAL_UPI: 'manual_upi',
 });

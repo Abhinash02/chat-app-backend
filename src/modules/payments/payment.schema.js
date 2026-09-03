@@ -8,8 +8,10 @@ export const createOrderSchema = z.object({ packageId: objectIdSchema }).strict(
 export const verifyPaymentSchema = z
   .object({
     orderId: objectIdSchema,
-    razorpayPaymentId: z.string().trim().min(5).max(64),
-    razorpaySignature: z.string().trim().min(16).max(256),
+    razorpayPaymentId: z.string().trim().min(5).max(64).optional(),
+    razorpaySignature: z.string().trim().min(16).max(256).optional(),
+    status: z.string().optional(),
+    reason: z.string().optional(),
   })
   .strict();
 

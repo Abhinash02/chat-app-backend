@@ -99,6 +99,14 @@ export const updateSettingsSchema = z
       })
       .strict()
       .optional(),
+    ads: z
+      .object({
+        homeBottomAdProvider: z.enum(['admin', 'admob', 'off']).optional(),
+        admobBannerUnitId: z.string().trim().max(150).optional(),
+        showSponsoredBadge: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {

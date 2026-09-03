@@ -91,6 +91,11 @@ export async function getPublicSettings() {
       appStoreUrl: 'https://apps.apple.com/app/id123456789',
       updateMessage: 'A new version of Vibe is available with performance improvements!',
     },
+    ads: settings.ads ?? {
+      homeBottomAdProvider: 'admin',
+      admobBannerUnitId: 'ca-app-pub-3940256099942544/6300978111',
+      showSponsoredBadge: true,
+    },
   };
 }
 

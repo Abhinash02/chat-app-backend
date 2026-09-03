@@ -37,6 +37,16 @@ export const paymentController = {
     return res.redirect(targetUrl);
   }),
 
+  createStripeOrder: asyncHandler(async (req, res) => {
+    const result = await paymentService.createStripeOrder({ user: req.user, ...req.body });
+    return sendCreated(res, result);
+  }),
+
+  verifyStripePayment: asyncHandler(async (req, res) => {
+    const result = await paymentService.verifyStripePayment({ user: req.user, ...req.body });
+    return sendSuccess(res, result);
+  }),
+
   createRazorpayOrder: asyncHandler(async (req, res) => {
     const result = await paymentService.createRazorpayOrder({ user: req.user, ...req.body });
     return sendCreated(res, result);

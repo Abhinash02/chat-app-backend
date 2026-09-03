@@ -1,4 +1,5 @@
 import { BannerModel } from '#src/modules/banners/banner.model.js';
+import { BannerClickModel } from '#src/modules/banners/banner-click.model.js';
 
 class BannerRepository {
   /**
@@ -42,6 +43,7 @@ class BannerRepository {
   }
 
   async deleteById(bannerId) {
+    await BannerClickModel.deleteMany({ bannerId }).catch(() => undefined);
     return BannerModel.findByIdAndDelete(bannerId).select('+imageStorageKey').lean().exec();
   }
 
@@ -54,8 +56,53 @@ class BannerRepository {
     return BannerModel.updateMany({ _id: { $in: bannerIds } }, { $inc: { impressions: 1 } }).exec();
   }
 
-  async incrementTaps(bannerId) {
-    return BannerModel.updateOne({ _id: bannerId }, { $inc: { taps: 1 } }).exec();
+  async recordTap({ bannerId, userId, action, actionTarget, ip, userAgent }) {
+    await BannerModel.updateOne({ _id: bannerId }, { $inc: { taps: 1 } }).exec();
+    if (userId) {
+      await BannerClickModel.create({
+        bannerId,
+        userId,
+        action: action || '',
+        actionTarget: actionTarget || '',
+        ip: ip || null,
+        userAgent: userAgent || null,
+      }).catch(() => undefined);
+    }
+  }
+
+  async getBannerClicks(bannerId, { limit = 100 } = {}) {
+    const [clicks, totalClicks, uniqueUsers] = await Promise.all([
+      BannerClickModel.find({ bannerId })
+        .sort({ clickedAt: -1 })
+        .limit(limit)
+        .populate('userId', 'name nickname email avatarUrl phone role createdAt')
+        .lean()
+        .exec(),
+      BannerClickModel.countDocuments({ bannerId }),
+      BannerClickModel.distinct('userId', { bannerId }),
+    ]);
+
+    return {
+      totalClicks,
+      uniqueUsersCount: uniqueUsers.length,
+      clicks: clicks.map((c) => ({
+        id: String(c._id),
+        userId: c.userId ? String(c.userId._id) : 'Unknown',
+        name: c.userId?.name || c.userId?.nickname || 'App User',
+        nickname: c.userId?.nickname || '',
+        email: c.userId?.email || 'N/A',
+        avatarUrl: c.userId?.avatarUrl || null,
+        phone: c.userId?.phone || null,
+        role: c.userId?.role || 'user',
+        action: c.action,
+        actionTarget: c.actionTarget,
+        clickedAt: c.clickedAt,
+      })),
+    };
+  }
+
+  async getClickerUserIds(bannerId) {
+    return BannerClickModel.distinct('userId', { bannerId });
   }
 
   async countLive(placement) {

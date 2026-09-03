@@ -87,6 +87,18 @@ export const razorpayGateway = {
     return getClient().payments.fetch(paymentId);
   },
 
+  async fetchOrder(orderId) {
+    return getClient().orders.fetch(orderId);
+  },
+
+  async fetchOrderPayments(orderId) {
+    return getClient().orders.fetchPayments(orderId);
+  },
+
+  async capturePayment({ paymentId, amountInPaise, currency = 'INR' }) {
+    return getClient().payments.capture(paymentId, amountInPaise, currency);
+  },
+
   async refundPayment({ paymentId, amountInPaise, notes = {} }) {
     return getClient().payments.refund(paymentId, {
       amount: amountInPaise,

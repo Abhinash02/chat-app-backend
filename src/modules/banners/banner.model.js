@@ -21,6 +21,7 @@ const bannerSchema = new mongoose.Schema(
     note: { type: String, trim: true, maxlength: 200, default: '' },
 
     imageUrl: { type: String, required: true },
+    mediaType: { type: String, enum: ['image', 'video'], default: 'image' },
     /** Provider key, so replacing the image can delete the old file. */
     imageStorageKey: { type: String, default: null, select: false },
 

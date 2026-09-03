@@ -37,6 +37,8 @@ router.use(requireVerifiedAccount, paymentRateLimiter);
 
 router.post('/orders/cashfree', validate({ body: createOrderSchema }), paymentController.createCashfreeOrder);
 router.post('/orders/cashfree/verify', paymentController.verifyCashfreePayment);
+router.post('/orders/stripe', validate({ body: createOrderSchema }), paymentController.createStripeOrder);
+router.post('/orders/stripe/verify', paymentController.verifyStripePayment);
 router.post('/orders/razorpay', validate({ body: createOrderSchema }), paymentController.createRazorpayOrder);
 router.post('/orders/razorpay/verify', validate({ body: verifyPaymentSchema }), paymentController.verifyPayment);
 router.post('/orders/upi', validate({ body: createOrderSchema }), paymentController.createManualOrder);

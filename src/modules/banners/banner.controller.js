@@ -14,7 +14,14 @@ export const bannerController = {
   }),
 
   recordTap: asyncHandler(async (req, res) => {
-    const result = await bannerService.recordTap(req.params.bannerId);
+    const result = await bannerService.recordTap({
+      bannerId: req.params.bannerId,
+      userId: req.user?.id,
+      action: req.body?.action,
+      actionTarget: req.body?.actionTarget,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
     return sendSuccess(res, result);
   }),
 
@@ -23,6 +30,22 @@ export const bannerController = {
   listAll: asyncHandler(async (_req, res) => {
     const banners = await bannerService.listAllBanners();
     return sendSuccess(res, banners);
+  }),
+
+  getClicks: asyncHandler(async (req, res) => {
+    const insights = await bannerService.getBannerClicks(req.params.bannerId);
+    return sendSuccess(res, insights);
+  }),
+
+  sendPush: asyncHandler(async (req, res) => {
+    const result = await bannerService.sendBannerPushNotification({
+      admin: req.user,
+      bannerId: req.params.bannerId,
+      title: req.body?.title,
+      body: req.body?.body,
+      targetAudience: req.body?.targetAudience || 'all',
+    });
+    return sendSuccess(res, result);
   }),
 
   create: asyncHandler(async (req, res) => {

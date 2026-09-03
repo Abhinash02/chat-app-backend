@@ -161,12 +161,34 @@ export async function removeAvatar(userId) {
 }
 
 export async function updateLocation({ userId, latitude, longitude, city, country }) {
+  // If client didn't send a city name, try to resolve it via Nominatim reverse geocode
+  let resolvedCity = city ?? null;
+  let resolvedCountry = country ?? null;
+
+  if (!resolvedCity && latitude != null && longitude != null) {
+    try {
+      const geoRes = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&zoom=10&accept-language=en`,
+        { headers: { 'User-Agent': 'VibeChat/1.0 (contact@vibechat.app)' }, signal: AbortSignal.timeout(5000) }
+      );
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        resolvedCity = geoData.address?.city || geoData.address?.town || geoData.address?.village ||
+                       geoData.address?.suburb || geoData.address?.county || geoData.address?.state_district ||
+                       geoData.name || null;
+        resolvedCountry = geoData.address?.country ?? null;
+      }
+    } catch (err) {
+      logger.warn({ err: err?.message, userId }, 'Reverse geocode failed, skipping city resolution');
+    }
+  }
+
   const updated = await userRepository.updateById(userId, {
     $set: {
       'location.type': 'Point',
       'location.coordinates': [longitude, latitude],
-      'location.city': city ?? undefined,
-      'location.country': country ?? undefined,
+      ...(resolvedCity ? { 'location.city': resolvedCity } : {}),
+      ...(resolvedCountry ? { 'location.country': resolvedCountry } : {}),
       'location.updatedAt': new Date(),
     },
   });

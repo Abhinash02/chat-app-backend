@@ -165,6 +165,25 @@ const earningsSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const adsSchema = new mongoose.Schema(
+  {
+    homeBottomAdProvider: {
+      type: String,
+      enum: ['admin', 'admob', 'off'],
+      default: DEFAULT_SETTINGS.ads.homeBottomAdProvider,
+    },
+    admobBannerUnitId: {
+      type: String,
+      default: DEFAULT_SETTINGS.ads.admobBannerUnitId,
+    },
+    showSponsoredBadge: {
+      type: Boolean,
+      default: DEFAULT_SETTINGS.ads.showSponsoredBadge,
+    },
+  },
+  { _id: false },
+);
+
 const settingsSchema = new mongoose.Schema(
   {
     key: { type: String, default: SETTINGS_SINGLETON_KEY, unique: true, immutable: true },
@@ -177,6 +196,7 @@ const settingsSchema = new mongoose.Schema(
     moderation: { type: moderationSchema, default: () => ({}) },
     appVersion: { type: appVersionSchema, default: () => ({}) },
     earnings: { type: earningsSchema, default: () => ({}) },
+    ads: { type: adsSchema, default: () => ({}) },
     updatedByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true },

@@ -11,6 +11,7 @@ import { logger } from '#src/config/logger.js';
 import { env } from '#src/config/env.js';
 import { razorpayGateway } from '#src/integrations/payments/razorpay.gateway.js';
 import { cashfreeGateway } from '#src/integrations/payments/cashfree.gateway.js';
+import { stripeGateway } from '#src/integrations/payments/stripe.gateway.js';
 import { PAYMENT_PROVIDER } from '#src/integrations/payments/payment.gateway.js';
 import { coinsService } from '#src/modules/coins/coins.service.js';
 import { settingsService } from '#src/modules/settings/settings.service.js';
@@ -21,6 +22,7 @@ import { emitToAdmin } from '#src/realtime/emitter.js';
 import { SOCKET_EVENT } from '#src/realtime/events.js';
 import { notificationService } from '#src/modules/notifications/notification.service.js';
 import { generateAndSaveOrderInvoicePdf } from '#src/modules/payments/invoice-pdf.service.js';
+import { emailService } from '#src/integrations/email/email.service.js';
 
 function toOrderDto(order) {
   return {
@@ -34,6 +36,7 @@ function toOrderDto(order) {
     totalCoins: order.coins + order.bonusCoins,
     provider: order.provider,
     status: order.status,
+    failureReason: order.failureReason || null,
     providerOrderId: order.providerOrderId,
     providerPaymentId: order.providerPaymentId,
     providerRefundId: order.providerRefundId,
@@ -110,12 +113,38 @@ async function creditOrder(order) {
     })
     .catch((err) => logger.warn({ err }, 'Payment success push notification failed'));
 
-  // Generate & save PDF invoice to Cloudinary / DB in the background
-  generateAndSaveOrderInvoicePdf(order._id).catch((err) => {
-    logger.warn({ err: err?.message, orderId: String(order._id) }, 'Background invoice PDF generation failed');
-  });
+  // Generate & save PDF invoice to Cloudinary / DB in the background, and send email invoice to user
+  (async () => {
+    try {
+      const invoiceDoc = await generateAndSaveOrderInvoicePdf(order._id).catch(() => null);
+      const invoiceUrl = invoiceDoc?.invoiceUrl || order.invoiceUrl;
+      await emailService.sendPaymentSuccessInvoice({
+        user,
+        order,
+        invoiceUrl,
+      });
+    } catch (err) {
+      logger.warn({ err: err?.message, orderId: String(order._id) }, 'Payment success email invoice failed');
+    }
+  })();
 
   return snapshot;
+}
+
+/** Dispatches an attractive email notification when a payment fails or is cancelled */
+async function notifyPaymentFailed({ order, reason, user: providedUser }) {
+  try {
+    const user = providedUser || (await userRepository.findById(order.userId));
+    if (user?.email) {
+      await emailService.sendPaymentFailedNotice({
+        user,
+        order,
+        reason,
+      });
+    }
+  } catch (err) {
+    logger.warn({ err: err?.message, orderId: String(order?._id || order?.id) }, 'Payment failure email dispatch failed');
+  }
 }
 
 export async function createRazorpayOrder({ user, packageId }) {
@@ -157,6 +186,7 @@ export async function createRazorpayOrder({ user, packageId }) {
         provider: PAYMENT_PROVIDER.RAZORPAY,
         // The public key id is safe to hand to the app; the secret never leaves the server.
         keyId: env.RAZORPAY_KEY_ID,
+        orderId: providerOrder.providerOrderId,
         providerOrderId: providerOrder.providerOrderId,
         amountInPaise: providerOrder.amountInPaise,
         currency: providerOrder.currency,
@@ -179,7 +209,7 @@ export async function createRazorpayOrder({ user, packageId }) {
  * Confirms a checkout the app reports as successful. The signature is what makes
  * this trustworthy — without it, a client could simply claim it paid.
  */
-export async function verifyRazorpayPayment({ user, orderId, razorpayPaymentId, razorpaySignature }) {
+export async function verifyRazorpayPayment({ user, orderId, razorpayPaymentId, razorpaySignature, status, reason }) {
   const order = await paymentRepository.findById(orderId);
   if (!order) throw new NotFoundError('Order not found', 'ORDER_NOT_FOUND');
 
@@ -188,38 +218,128 @@ export async function verifyRazorpayPayment({ user, orderId, razorpayPaymentId, 
   }
 
   if (order.creditedAt) {
-    return { order: toOrderDto(order), wallet: null, alreadyCredited: true };
+    return { order: toOrderDto(order), wallet: null, alreadyCredited: true, status: PAYMENT_STATUS.PAID };
   }
 
-  const signatureValid = razorpayGateway.verifyPaymentSignature({
-    orderId: order.providerOrderId,
-    paymentId: razorpayPaymentId,
-    signature: razorpaySignature,
-  });
+  // Handle client-reported failure or cancellation
+  if (status === 'failed' || status === 'cancelled') {
+    const updated = await paymentRepository.updateById(order._id, {
+      $set: {
+        status: PAYMENT_STATUS.FAILED,
+        failureReason: reason || 'Payment cancelled or failed by user',
+      },
+    });
+    notifyPaymentFailed({ order: updated, reason: reason || 'Payment cancelled or failed by user', user });
+    return { order: toOrderDto(updated), wallet: null, alreadyCredited: false, status: PAYMENT_STATUS.FAILED };
+  }
 
-  if (!signatureValid) {
-    await paymentRepository.updateById(order._id, {
-      $set: { status: PAYMENT_STATUS.FAILED, failureReason: 'SIGNATURE_MISMATCH' },
+  // 1. If HMAC signature was provided, verify it directly
+  if (razorpayPaymentId && razorpaySignature && razorpaySignature !== 'manual_captured') {
+    const signatureValid = razorpayGateway.verifyPaymentSignature({
+      orderId: order.providerOrderId,
+      paymentId: razorpayPaymentId,
+      signature: razorpaySignature,
     });
 
-    logger.warn({ orderId: String(order._id), userId: user.id }, 'Rejected payment with invalid signature');
-    throw new UnauthorizedError('We could not verify this payment', 'PAYMENT_SIGNATURE_INVALID');
+    if (signatureValid) {
+      const paid = await paymentRepository.markPaidOnce({
+        orderId: order._id,
+        providerPaymentId: razorpayPaymentId,
+        providerSignature: razorpaySignature,
+      });
+
+      if (!paid) {
+        const current = await paymentRepository.findById(order._id);
+        return { order: toOrderDto(current), wallet: null, alreadyCredited: true, status: PAYMENT_STATUS.PAID };
+      }
+
+      const wallet = await creditOrder(paid);
+      return { order: toOrderDto(paid), wallet, alreadyCredited: false, status: PAYMENT_STATUS.PAID };
+    }
   }
 
-  const paid = await paymentRepository.markPaidOnce({
-    orderId: order._id,
-    providerPaymentId: razorpayPaymentId,
-    providerSignature: razorpaySignature,
-  });
+  // 2. Direct API verification & auto-capture via Razorpay payment ID
+  if (razorpayPaymentId && razorpayGateway.isConfigured) {
+    try {
+      let payment = await razorpayGateway.fetchPayment(razorpayPaymentId);
+      if (payment.status === 'authorized') {
+        payment = await razorpayGateway.capturePayment({
+          paymentId: razorpayPaymentId,
+          amountInPaise: order.amountInPaise,
+          currency: order.currency || 'INR',
+        });
+      }
 
-  if (!paid) {
-    // The webhook got here first; the coins are already in the wallet.
-    const current = await paymentRepository.findById(order._id);
-    return { order: toOrderDto(current), wallet: null, alreadyCredited: true };
+      if (payment.status === 'captured' && Number(payment.amount) === Number(order.amountInPaise)) {
+        const paid = await paymentRepository.markPaidOnce({
+          orderId: order._id,
+          providerPaymentId: razorpayPaymentId,
+          providerSignature: razorpaySignature || 'razorpay_api_verified',
+        });
+
+        if (paid) {
+          const wallet = await creditOrder(paid);
+          return { order: toOrderDto(paid), wallet, alreadyCredited: false, status: PAYMENT_STATUS.PAID };
+        }
+        const current = await paymentRepository.findById(order._id);
+        return { order: toOrderDto(current), wallet: null, alreadyCredited: true, status: PAYMENT_STATUS.PAID };
+      }
+    } catch (err) {
+      logger.warn({ err, paymentId: razorpayPaymentId }, 'Razorpay direct payment verification fallback error');
+    }
   }
 
-  const wallet = await creditOrder(paid);
-  return { order: toOrderDto(paid), wallet, alreadyCredited: false };
+  // 2. Fallback: Query Razorpay API directly to check status for this order
+  if (order.providerOrderId && razorpayGateway.isConfigured) {
+    try {
+      const payments = await razorpayGateway.fetchOrderPayments(order.providerOrderId);
+      const capturedPayment = payments?.items?.find((p) => p.status === 'captured');
+
+      if (capturedPayment) {
+        const paid = await paymentRepository.markPaidOnce({
+          orderId: order._id,
+          providerPaymentId: capturedPayment.id,
+          providerSignature: 'razorpay_api_verified',
+        });
+
+        if (paid) {
+          const wallet = await creditOrder(paid);
+          return { order: toOrderDto(paid), wallet, alreadyCredited: false, status: PAYMENT_STATUS.PAID };
+        }
+        const current = await paymentRepository.findById(order._id);
+        return { order: toOrderDto(current), wallet: null, alreadyCredited: true, status: PAYMENT_STATUS.PAID };
+      }
+
+      const failedPayment = payments?.items?.find((p) => p.status === 'failed');
+      if (failedPayment) {
+        const failureReason = failedPayment.error_description || failedPayment.error_reason || 'Payment failed on gateway';
+        const updated = await paymentRepository.updateById(order._id, {
+          $set: {
+            status: PAYMENT_STATUS.FAILED,
+            failureReason,
+          },
+        });
+        notifyPaymentFailed({ order: updated, reason: failureReason, user });
+        return {
+          order: toOrderDto(updated),
+          wallet: null,
+          alreadyCredited: false,
+          status: PAYMENT_STATUS.FAILED,
+          failureReason,
+        };
+      }
+    } catch (err) {
+      logger.error({ err, orderId: String(order._id) }, 'Error querying Razorpay order payments');
+    }
+  }
+
+  const current = await paymentRepository.findById(order._id);
+  return {
+    order: toOrderDto(current),
+    wallet: null,
+    alreadyCredited: Boolean(current.creditedAt),
+    status: current.status,
+  };
 }
 
 /**
@@ -354,6 +474,24 @@ export async function verifyCashfreePayment({ user, orderId }) {
     }
   }
 
+  if (cfOrder.order_status === 'EXPIRED' || cfOrder.order_status === 'CANCELLED' || cfOrder.order_status === 'TERMINATED') {
+    const failureReason = `Cashfree order was ${cfOrder.order_status.toLowerCase()}`;
+    const updated = await paymentRepository.updateById(order._id, {
+      $set: {
+        status: cfOrder.order_status === 'EXPIRED' ? PAYMENT_STATUS.EXPIRED : PAYMENT_STATUS.FAILED,
+        failureReason,
+      },
+    });
+    notifyPaymentFailed({ order: updated, reason: failureReason, user });
+    return {
+      order: toOrderDto(updated),
+      wallet: null,
+      alreadyCredited: false,
+      status: updated.status,
+      cashfreeStatus: cfOrder.order_status,
+    };
+  }
+
   const current = await paymentRepository.findById(order._id);
   return {
     order: toOrderDto(current),
@@ -439,6 +577,110 @@ export async function handleCashfreeReturn({ orderId }) {
 
   const current = await paymentRepository.findById(order._id);
   return { status: current.status, order: toOrderDto(current) };
+}
+
+// ----- Stripe Payment Gateway -----------------------------------------------
+
+export async function createStripeOrder({ user, packageId, returnUrl }) {
+  if (!stripeGateway.isConfigured) {
+    throw new ForbiddenError('Stripe online payment is not configured yet', 'STRIPE_NOT_CONFIGURED');
+  }
+
+  const snapshot = await snapshotPackage(packageId);
+
+  if (snapshot.amountInPaise < 4500) {
+    throw new BadRequestError(
+      'Stripe requires a minimum transaction amount of ₹50 ($0.50 USD). Please select a ₹50 or higher package, or pay with Cashfree / UPI.',
+      'STRIPE_MINIMUM_AMOUNT',
+    );
+  }
+
+  const order = await paymentRepository.create({
+    userId: user.id,
+    ...snapshot,
+    provider: PAYMENT_PROVIDER.STRIPE,
+    status: PAYMENT_STATUS.CREATED,
+    expiresAt: addMinutes(new Date(), ORDER_EXPIRY_MINUTES),
+  });
+
+  try {
+    const session = await stripeGateway.createCheckoutSession({
+      amountInPaise: snapshot.amountInPaise,
+      currency: 'inr',
+      orderId: String(order._id),
+      packageName: `${snapshot.packageName} (${snapshot.coins + snapshot.bonusCoins} Coins)`,
+      userEmail: user.email,
+      returnUrl,
+    });
+
+    const updated = await paymentRepository.updateById(order._id, {
+      $set: {
+        providerOrderId: session.providerOrderId,
+        'metadata.stripeSessionId': session.providerOrderId,
+        'metadata.paymentUrl': session.paymentUrl,
+      },
+    });
+
+    return {
+      order: toOrderDto(updated),
+      checkout: {
+        provider: PAYMENT_PROVIDER.STRIPE,
+        orderId: String(order._id),
+        sessionId: session.providerOrderId,
+        paymentUrl: session.paymentUrl,
+        amountInRupees: snapshot.amountInPaise / 100,
+        currency: session.currency,
+        packageName: snapshot.packageName,
+      },
+    };
+  } catch (error) {
+    await paymentRepository.updateById(order._id, {
+      $set: { status: PAYMENT_STATUS.FAILED, failureReason: 'PROVIDER_ORDER_FAILED' },
+    });
+    logger.error({ err: error, orderId: String(order._id) }, 'Stripe checkout creation failed');
+    throw new BadRequestError(error.message || 'Could not initiate Stripe payment', 'PAYMENT_INIT_FAILED');
+  }
+}
+
+export async function verifyStripePayment({ user, orderId }) {
+  const order = await paymentRepository.findById(orderId);
+  if (!order) throw new NotFoundError('Order not found', 'ORDER_NOT_FOUND');
+
+  if (String(order.userId) !== String(user.id)) {
+    throw new ForbiddenError('This order is not yours', 'NOT_ORDER_OWNER');
+  }
+
+  if (order.creditedAt) {
+    return { order: toOrderDto(order), wallet: null, alreadyCredited: true };
+  }
+
+  const sessionId = order.metadata?.stripeSessionId || order.providerOrderId;
+  if (!sessionId) {
+    throw new BadRequestError('Missing Stripe session ID', 'STRIPE_SESSION_MISSING');
+  }
+
+  const session = await stripeGateway.retrieveSession(sessionId);
+  if (session.payment_status !== 'paid') {
+    return {
+      order: toOrderDto(order),
+      status: session.payment_status || 'unpaid',
+      alreadyCredited: false,
+    };
+  }
+
+  const paid = await paymentRepository.markPaidOnce({
+    orderId: order._id,
+    providerPaymentId: session.payment_intent ? String(session.payment_intent) : sessionId,
+    providerSignature: String(session.id),
+  });
+
+  if (paid) {
+    const wallet = await creditOrder(paid);
+    return { order: toOrderDto(paid), wallet, alreadyCredited: false, status: 'paid' };
+  }
+
+  const fresh = await paymentRepository.findById(order._id);
+  return { order: toOrderDto(fresh), wallet: null, alreadyCredited: true, status: 'paid' };
 }
 
 export async function getOrderInvoiceHtml({ user, orderId }) {
@@ -714,6 +956,9 @@ export async function rejectManualPayment({ orderId, adminId, reason }) {
     })
     .catch((err) => logger.warn({ err }, 'Payment rejection push notification failed'));
 
+  // Send email notice to user
+  notifyPaymentFailed({ order: updated, reason: reason || 'Manual UPI transfer could not be verified by admin' });
+
   return toOrderDto(updated);
 }
 
@@ -783,7 +1028,6 @@ import { RedeemCodeModel } from './redeem-code.model.js';
 import { UserModel } from '#src/modules/users/user.model.js';
 import { getPushProvider, PUSH_CHANNEL } from '#src/integrations/push/index.js';
 import { notificationRepository } from '#src/modules/notifications/notification.repository.js';
-import { emailService } from '#src/integrations/email/email.service.js';
 
 export async function createRedeemCode({
   code,
@@ -1129,12 +1373,17 @@ export async function getPaymentOptions() {
     methods: {
       cashfree: cashfreeGateway.isConfigured,
       razorpay: settings.payments.razorpayEnabled && razorpayGateway.isConfigured,
+      stripe: stripeGateway.isConfigured,
       manualUpi: settings.payments.manualUpiEnabled && Boolean(settings.payments.upiId),
     },
     cashfree: {
       isConfigured: cashfreeGateway.isConfigured,
       appId: env.CASHFREE_APP_ID,
       environment: cashfreeGateway.environment,
+    },
+    stripe: {
+      isConfigured: stripeGateway.isConfigured,
+      publishableKey: stripeGateway.publishableKey,
     },
     upi: {
       upiId: settings.payments.upiId,
@@ -1150,6 +1399,8 @@ export const paymentService = {
   verifyCashfreePayment,
   handleCashfreeWebhook,
   handleCashfreeReturn,
+  createStripeOrder,
+  verifyStripePayment,
   createRazorpayOrder,
   verifyRazorpayPayment,
   handleRazorpayWebhook,

@@ -34,6 +34,8 @@ const envSchema = z.object({
   SMTP_PASSWORD: z.string().optional().default(''),
   MAIL_FROM_NAME: z.string().default('Vibe Chat'),
   MAIL_FROM_EMAIL: z.string().email().default('no-reply@vibechat.app'),
+  GMAIL_USER: z.string().optional().default(''),
+  GMAIL_APP_PASSWORD: z.string().optional().default(''),
 
   STORAGE_PROVIDER: z.enum(['supabase', 'cloudinary', 'local']).default('local'),
   SUPABASE_URL: z.string().optional().default(''),
@@ -47,6 +49,10 @@ const envSchema = z.object({
   RAZORPAY_KEY_ID: z.string().optional().default(''),
   RAZORPAY_KEY_SECRET: z.string().optional().default(''),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional().default(''),
+
+  STRIPE_SECRET_KEY: z.string().optional().default(''),
+  STRIPE_PUBLISHABLE_KEY: z.string().optional().default(''),
+  STRIPE_WEBHOOK_SECRET: z.string().optional().default(''),
 
   CASHFREE_APP_ID: z.string().optional().default(''),
   CASHFREE_SECRET_KEY: z.string().optional().default(''),
@@ -77,8 +83,13 @@ export const env = Object.freeze({
   corsOrigins: raw.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
-  isEmailConfigured: Boolean(raw.SMTP_HOST && raw.SMTP_USER),
+  isGmailConfigured: Boolean(raw.GMAIL_USER && raw.GMAIL_APP_PASSWORD),
+  isEmailConfigured: Boolean(
+    (raw.SMTP_HOST && raw.SMTP_USER && !raw.SMTP_USER.includes('your@email.com')) ||
+    (raw.GMAIL_USER && raw.GMAIL_APP_PASSWORD),
+  ),
   publicApiUrl: raw.PUBLIC_API_URL || `http://localhost:${raw.PORT}`,
   isRazorpayConfigured: Boolean(raw.RAZORPAY_KEY_ID && raw.RAZORPAY_KEY_SECRET),
   isCashfreeConfigured: Boolean(raw.CASHFREE_APP_ID && raw.CASHFREE_SECRET_KEY),
+  isStripeConfigured: Boolean(raw.STRIPE_SECRET_KEY),
 });

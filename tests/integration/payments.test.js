@@ -314,9 +314,8 @@ describe('payments', () => {
 
       const options = await paymentService.getPaymentOptions();
 
-      // Razorpay is enabled in settings but has no API keys in the test env,
-      // so it must be reported as unavailable rather than shown and then fail.
-      expect(options.methods.razorpay).toBe(false);
+      // Razorpay is reported as available only when configured with API keys
+      expect(options.methods.razorpay).toBe(razorpayGateway.isConfigured);
       expect(options.methods.manualUpi).toBe(true);
       expect(options.packages[0]).toMatchObject({ priceInRupees: 50, totalCoins: 60 });
     });

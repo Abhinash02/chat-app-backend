@@ -95,4 +95,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
     maxWithdrawalCoinsPerDay: 5000,
     payoutProvider: 'cashfree',
   },
+  ads: {
+    homeBottomAdProvider: 'admin',
+    admobBannerUnitId: 'ca-app-pub-3940256099942544/6300978111',
+    showSponsoredBadge: true,
+  },
 });

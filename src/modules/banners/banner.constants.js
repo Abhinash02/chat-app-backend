@@ -26,9 +26,10 @@ export const BANNER_ACTION = Object.freeze({
   URL: 'url',
 });
 
-export const BANNER_SCREENS = Object.freeze(['coins', 'rooms', 'games', 'chats', 'leaderboard']);
+export const BANNER_SCREENS = Object.freeze(['coins', 'rooms', 'games', 'chats', 'leaderboard', 'events', 'profile']);
 
-/** Where a banner appears. Today only the home feed, but named so it can grow. */
+/** Where a banner appears. */
 export const BANNER_PLACEMENT = Object.freeze({
   HOME_TOP: 'home_top',
+  HOME_BOTTOM_AD: 'home_bottom_ad',
 });

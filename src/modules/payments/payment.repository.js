@@ -35,6 +35,7 @@ class PaymentRepository {
           providerPaymentId: providerPaymentId ?? null,
           providerSignature: providerSignature ?? null,
           creditedAt: new Date(),
+          failureReason: null,
         },
       },
       { new: true },

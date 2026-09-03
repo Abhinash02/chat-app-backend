@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { authenticate, requireAdmin, uploadImage, validate } from '#src/common/middleware/index.js';
+import { authenticate, requireAdmin, uploadMedia, validate } from '#src/common/middleware/index.js';
 import { bannerController } from '#src/modules/banners/banner.controller.js';
 import {
   bannerIdParamSchema,
@@ -25,21 +25,32 @@ router.use(requireAdmin);
 router.get('/admin/all', bannerController.listAll);
 
 /**
- * The image and the fields arrive together as multipart, so multer has to run
- * before validation — `req.body` does not exist until it has parsed the form.
+ * The media (image or video) and fields arrive together as multipart.
  */
 router.post(
   '/admin',
-  uploadImage.single('image'),
+  uploadMedia.single('image'),
   validate({ body: createBannerSchema }),
   bannerController.create,
 );
 router.patch(
   '/admin/:bannerId',
-  uploadImage.single('image'),
+  uploadMedia.single('image'),
   validate({ params: bannerIdParamSchema, body: updateBannerSchema }),
   bannerController.update,
 );
+router.get(
+  '/admin/:bannerId/clicks',
+  validate({ params: bannerIdParamSchema }),
+  bannerController.getClicks,
+);
+
+router.post(
+  '/admin/:bannerId/push',
+  validate({ params: bannerIdParamSchema }),
+  bannerController.sendPush,
+);
+
 router.delete(
   '/admin/:bannerId',
   validate({ params: bannerIdParamSchema }),
