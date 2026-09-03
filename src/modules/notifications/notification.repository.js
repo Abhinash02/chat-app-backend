@@ -40,7 +40,7 @@ class NotificationRepository {
   }
 
   async findActiveTokensForUsers(userIds) {
-    return DeviceTokenModel.find({ userId: { $in: userIds }, isActive: true })
+    return DeviceTokenModel.find({ userId: { $in: userIds } })
       .select('userId token platform')
       .lean()
       .exec();

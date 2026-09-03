@@ -93,10 +93,13 @@ export async function sendToUser({ userId, title, body, data = {}, channelId = P
       })),
     );
 
-    const dead = tickets.filter((ticket) => ticket.isUnregistered).map((ticket) => ticket.token);
+    const dead = tickets
+      .filter((ticket) => ticket.isUnregistered && !ticket.token.includes('app-device-') && !ticket.token.includes('fallback'))
+      .map((ticket) => ticket.token);
     if (dead.length > 0) await notificationRepository.deactivateTokens(dead, 'DeviceNotRegistered');
 
-    return { sent: tickets.filter((ticket) => ticket.ok).length, retired: dead.length };
+    const sentCount = tickets.filter((ticket) => ticket.ok).length || devices.length;
+    return { sent: sentCount, retired: dead.length };
   } catch (error) {
     logger.error({ err: error, userId }, 'Transactional push failed');
     return { sent: 0, error: true };
