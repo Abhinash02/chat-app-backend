@@ -120,22 +120,15 @@ async function issueOtp({ user, purpose }) {
     appName,
   };
 
-  /*
-   * Delivery is deliberately not awaited.
-   *
-   * An SMTP round trip costs hundreds of milliseconds when it works and
-   * several seconds when it does not — a rejecting or unreachable provider was
-   * making signup take five seconds and feel broken. Nothing downstream needs
-   * the result: the code is already stored, and whether the mail arrived is
-   * something the user discovers by looking in their inbox, not something the
-   * API can usefully promise.
-   */
-  const send =
-    purpose === OTP_PURPOSE.PASSWORD_RESET
-      ? emailService.sendPasswordResetCode(payload)
-      : emailService.sendVerificationCode(payload);
-
-  send.catch((error) => logger.error({ err: error, purpose }, 'Verification email threw'));
+  try {
+    if (purpose === OTP_PURPOSE.PASSWORD_RESET) {
+      await emailService.sendPasswordResetCode(payload);
+    } else {
+      await emailService.sendVerificationCode(payload);
+    }
+  } catch (error) {
+    logger.error({ err: error, purpose, email: user.email }, 'Verification email failed');
+  }
 
   return { sent: true, expiresInMinutes: OTP_TTL_MINUTES };
 }
