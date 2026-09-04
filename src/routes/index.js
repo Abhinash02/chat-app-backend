@@ -21,6 +21,7 @@ import { userRoutes } from '#src/modules/users/index.js';
 import { supportRoutes } from '#src/modules/support/index.js';
 import { withdrawalRoutes } from '#src/modules/withdrawals/index.js';
 import { systemLogRoutes } from '#src/modules/system-logs/index.js';
+import { referralRoutes } from '#src/modules/referrals/referral.routes.js';
 
 const router = Router();
 
@@ -59,5 +60,6 @@ router.use('/support', supportRoutes);
 router.use('/withdrawals', withdrawalRoutes);
 router.use('/system-logs', systemLogRoutes);
 router.use('/admin', adminRoutes);
+router.use('/referrals', referralRoutes);
 
 export const apiRoutes = router;

@@ -33,6 +33,7 @@ import {
   OTP_RESEND_COOLDOWN_SECONDS,
   OTP_TTL_MINUTES,
 } from '#src/modules/auth/auth.constants.js';
+import { referralService } from '#src/modules/referrals/referral.service.js';
 
 async function getAppName() {
   const theme = await themeService.getActiveTheme();
@@ -186,6 +187,7 @@ export async function register({
   gender,
   ageGroup,
   zodiacSign,
+  referralCode: incomingReferralCode,
   userAgent,
   ipAddress,
 }) {
@@ -215,6 +217,24 @@ export async function register({
   });
 
   await coinsService.ensureWallet({ userId: user._id, gender: user.gender });
+
+  // Generate the user's own referral code (fire-and-forget — never blocks signup)
+  referralService.generateReferralCode(user._id).catch((err) => {
+    logger.warn({ err, userId: String(user._id) }, 'Referral code generation failed');
+  });
+
+  // If the new user came via a referral link, credit the referrer (fire-and-forget)
+  if (incomingReferralCode) {
+    referralService
+      .applyReferral({
+        refereeId: user._id,
+        refereeGender: user.gender,
+        code: String(incomingReferralCode).trim().toUpperCase(),
+      })
+      .catch((err) => {
+        logger.warn({ err, userId: String(user._id) }, 'Referral application failed');
+      });
+  }
 
   // A failed send must not fail the signup — the user is already inside and can
   // ask for another code from the banner.

@@ -14,6 +14,7 @@ import { coinsService } from '#src/modules/coins/coins.service.js';
 import { roomService } from '#src/modules/rooms/room.service.js';
 import { themeService } from '#src/modules/theme/theme.service.js';
 import { userService } from '#src/modules/users/user.service.js';
+import { notificationService } from '#src/modules/notifications/notification.service.js';
 
 export function createSocketServer(httpServer) {
   const io = new Server(httpServer, {
@@ -44,18 +45,20 @@ export function createSocketServer(httpServer) {
     registerRandomCallHandlers(socket);
 
     // One round trip gives the app everything its header needs: coins, free-talk
-    // countdown, unread badge and the current theme.
+    // countdown, unread badge, notification badge, and the current theme.
     try {
-      const [wallet, unread, theme] = await Promise.all([
+      const [wallet, unread, theme, notifUnread] = await Promise.all([
         coinsService.getWalletSnapshot({ userId: user.id, gender: user.gender }),
         chatService.getTotalUnreadCount(user.id),
         themeService.getActiveTheme(),
+        notificationService.getUnreadInAppCount({ userId: user.id, gender: user.gender }).catch(() => ({ unreadCount: 0 })),
       ]);
 
       socket.emit(SOCKET_EVENT.READY, {
         userId: user.id,
         wallet,
         unreadCount: unread.unreadCount,
+        notificationUnreadCount: notifUnread?.unreadCount ?? 0,
         theme,
         serverTime: new Date().toISOString(),
       });

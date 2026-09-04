@@ -1,5 +1,6 @@
 import { asyncHandler } from '#src/common/utils/async-handler.util.js';
 import { sendCreated, sendSuccess } from '#src/common/utils/response.util.js';
+import { getStorageProvider } from '#src/integrations/storage/index.js';
 import { campaignService } from '#src/modules/notifications/campaign.service.js';
 import { notificationService } from '#src/modules/notifications/notification.service.js';
 
@@ -141,6 +142,98 @@ export const notificationController = {
 
   deleteTemplate: asyncHandler(async (req, res) => {
     const result = await campaignService.deleteTemplate(req.params.templateId);
+    return sendSuccess(res, result);
+  }),
+
+  // ----- In-App Broadcast Notifications (Admin & User) -------------------
+
+  broadcastInApp: asyncHandler(async (req, res) => {
+    let imageUrl = req.body.imageUrl || null;
+
+    if (req.file) {
+      const storage = getStorageProvider();
+      const uploaded = await storage.upload({
+        buffer: req.file.buffer,
+        mimeType: req.file.mimetype,
+        folder: 'notifications',
+        fileName: 'broadcast-image',
+      });
+      imageUrl = uploaded.url;
+    }
+
+    const sendPush = req.body.sendPush === 'true' || req.body.sendPush === true;
+
+    const result = await notificationService.broadcastInAppNotification({
+      adminId: req.user.id,
+      title: req.body.title,
+      body: req.body.body || req.body.message,
+      imageUrl,
+      actionUrl: req.body.actionUrl,
+      targetAudience: req.body.targetAudience,
+      sound: req.body.sound,
+      sendPush,
+    });
+    return sendCreated(res, result);
+  }),
+
+  listInAppAdmin: asyncHandler(async (req, res) => {
+    const skip = Number(req.query.skip) || 0;
+    const limit = Number(req.query.limit) || 20;
+    const result = await notificationService.listInAppNotificationsForAdmin({ skip, limit });
+    return sendSuccess(res, result);
+  }),
+
+  deleteInAppAdmin: asyncHandler(async (req, res) => {
+    const result = await notificationService.deleteInAppNotificationByAdmin(req.params.id);
+    return sendSuccess(res, result);
+  }),
+
+  getUserNotifications: asyncHandler(async (req, res) => {
+    const skip = Number(req.query.skip) || 0;
+    const limit = Number(req.query.limit) || 20;
+    const homeOnly = req.query.homeOnly === 'true';
+
+    const result = await notificationService.getUserInAppNotifications({
+      userId: req.user.id,
+      gender: req.user.gender,
+      skip,
+      limit,
+      homeOnly,
+    });
+    return sendSuccess(res, result);
+  }),
+
+  getUnreadCount: asyncHandler(async (req, res) => {
+    const result = await notificationService.getUnreadInAppCount({
+      userId: req.user.id,
+      gender: req.user.gender,
+    });
+    return sendSuccess(res, result);
+  }),
+
+  markRead: asyncHandler(async (req, res) => {
+    const result = await notificationService.markInAppNotificationAsRead({
+      notificationId: req.params.id,
+      userId: req.user.id,
+      gender: req.user.gender,
+    });
+    return sendSuccess(res, result);
+  }),
+
+  markAllRead: asyncHandler(async (req, res) => {
+    const result = await notificationService.markAllInAppNotificationsAsRead({
+      userId: req.user.id,
+      gender: req.user.gender,
+    });
+    return sendSuccess(res, result);
+  }),
+
+  deleteUserNotification: asyncHandler(async (req, res) => {
+    const result = await notificationService.deleteUserInAppNotification({
+      notificationId: req.params.id,
+      userId: req.user.id,
+      gender: req.user.gender,
+    });
     return sendSuccess(res, result);
   }),
 };

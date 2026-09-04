@@ -28,6 +28,10 @@ class UserRepository {
     return UserModel.findOne({ nickname }).collation({ locale: 'en', strength: 2 }).exec();
   }
 
+  async findByReferralCode(code) {
+    return UserModel.findOne({ referralCode: String(code).toUpperCase() }).exec();
+  }
+
   async existsByEmail(email) {
     return Boolean(await UserModel.exists({ email: String(email).toLowerCase() }));
   }
@@ -47,7 +51,10 @@ class UserRepository {
   }
 
   async findPublicProfileById(id) {
-    return UserModel.findOne({ _id: id, status: USER_STATUS.ACTIVE }).select(PUBLIC_FIELDS).exec();
+    return UserModel.findOne({
+      _id: id,
+      status: { $in: [USER_STATUS.ACTIVE, USER_STATUS.PENDING_VERIFICATION] },
+    }).select(PUBLIC_FIELDS).exec();
   }
 
   /**

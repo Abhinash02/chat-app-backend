@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { CampaignModel } from '#src/modules/notifications/campaign.model.js';
 import { DeviceTokenModel } from '#src/modules/notifications/device-token.model.js';
 import { EmailTemplateModel } from '#src/modules/notifications/email-template.model.js';
+import { InAppNotificationModel } from '#src/modules/notifications/in-app-notification.model.js';
 import { CAMPAIGN_STATUS } from '#src/modules/notifications/notification.constants.js';
 
 class NotificationRepository {
@@ -40,7 +41,7 @@ class NotificationRepository {
   }
 
   async findActiveTokensForUsers(userIds) {
-    return DeviceTokenModel.find({ userId: { $in: userIds } })
+    return DeviceTokenModel.find({ userId: { $in: userIds }, isActive: true })
       .select('userId token platform')
       .lean()
       .exec();
@@ -251,6 +252,125 @@ class NotificationRepository {
 
   async countAudience(filter) {
     return mongoose.model('User').countDocuments(filter).exec();
+  }
+
+  // ----- In-App Broadcast Notifications ----------------------------------
+
+  async createInAppNotification(data) {
+    const notification = await InAppNotificationModel.create(data);
+    return notification.toObject();
+  }
+
+  async listInAppNotificationsForAdmin({ skip = 0, limit = 20 }) {
+    const [items, total] = await Promise.all([
+      InAppNotificationModel.find()
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('createdByAdminId', 'name email')
+        .lean()
+        .exec(),
+      InAppNotificationModel.countDocuments().exec(),
+    ]);
+
+    return { items, total };
+  }
+
+  async findInAppNotificationById(id) {
+    return InAppNotificationModel.findById(id).lean().exec();
+  }
+
+  async deleteInAppNotification(id) {
+    return InAppNotificationModel.findByIdAndDelete(id).lean().exec();
+  }
+
+  _buildUserInAppFilter({ userId, gender, homeOnly = false }) {
+    const userGender = gender === 'female' ? 'girls' : 'boys';
+    const audienceFilter = {
+      targetAudience: { $in: ['all', userGender, 'online'] },
+    };
+
+    const filter = {
+      isActive: true,
+      deletedBy: { $ne: new mongoose.Types.ObjectId(String(userId)) },
+      ...audienceFilter,
+    };
+
+    if (homeOnly) {
+      // 24 hours window for home section
+      const past24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      filter.createdAt = { $gte: past24h };
+    }
+
+    return filter;
+  }
+
+  async listInAppNotificationsForUser({ userId, gender, skip = 0, limit = 20, homeOnly = false }) {
+    const filter = this._buildUserInAppFilter({ userId, gender, homeOnly });
+    const userObjId = new mongoose.Types.ObjectId(String(userId));
+
+    const [items, total, unreadCount] = await Promise.all([
+      InAppNotificationModel.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .exec(),
+      InAppNotificationModel.countDocuments(filter).exec(),
+      InAppNotificationModel.countDocuments({
+        ...filter,
+        readBy: { $ne: userObjId },
+      }).exec(),
+    ]);
+
+    const formatted = items.map((item) => ({
+      ...item,
+      id: String(item._id),
+      isRead: (item.readBy || []).some((rId) => String(rId) === String(userId)),
+    }));
+
+    return { items: formatted, total, unreadCount };
+  }
+
+  async countUnreadInAppNotificationsForUser({ userId, gender }) {
+    const filter = this._buildUserInAppFilter({ userId, gender, homeOnly: false });
+    const userObjId = new mongoose.Types.ObjectId(String(userId));
+
+    return InAppNotificationModel.countDocuments({
+      ...filter,
+      readBy: { $ne: userObjId },
+    }).exec();
+  }
+
+  async markInAppNotificationRead({ notificationId, userId }) {
+    const userObjId = new mongoose.Types.ObjectId(String(userId));
+    return InAppNotificationModel.findByIdAndUpdate(
+      notificationId,
+      { $addToSet: { readBy: userObjId } },
+      { new: true },
+    )
+      .lean()
+      .exec();
+  }
+
+  async markAllInAppNotificationsRead({ userId, gender }) {
+    const filter = this._buildUserInAppFilter({ userId, gender, homeOnly: false });
+    const userObjId = new mongoose.Types.ObjectId(String(userId));
+
+    return InAppNotificationModel.updateMany(filter, {
+      $addToSet: { readBy: userObjId },
+    }).exec();
+  }
+
+  async deleteInAppNotificationForUser({ notificationId, userId }) {
+    const userObjId = new mongoose.Types.ObjectId(String(userId));
+    return InAppNotificationModel.findByIdAndUpdate(
+      notificationId,
+      { $addToSet: { deletedBy: userObjId } },
+      { new: true },
+    )
+      .lean()
+      .exec();
   }
 }
 

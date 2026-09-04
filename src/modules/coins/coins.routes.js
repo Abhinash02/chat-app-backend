@@ -26,6 +26,7 @@ router.get(
   coinsController.listTransactions,
 );
 router.get('/packages', coinsController.listPackages);
+router.post('/consume-free-talk', requireVerifiedAccount, coinsController.consumeFreeTalk);
 router.get('/daily-bonus', requireVerifiedAccount, coinsController.getDailyBonusStatus);
 router.post('/daily-bonus/claim', requireVerifiedAccount, coinsController.claimDailyBonus);
 

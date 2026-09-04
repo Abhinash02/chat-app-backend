@@ -184,6 +184,17 @@ const adsSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const referralSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: DEFAULT_SETTINGS.referral.enabled },
+    boyToBoy: { type: Number, min: 0, max: 10_000, default: DEFAULT_SETTINGS.referral.boyToBoy },
+    boyToGirl: { type: Number, min: 0, max: 10_000, default: DEFAULT_SETTINGS.referral.boyToGirl },
+    girlToBoy: { type: Number, min: 0, max: 10_000, default: DEFAULT_SETTINGS.referral.girlToBoy },
+    girlToGirl: { type: Number, min: 0, max: 10_000, default: DEFAULT_SETTINGS.referral.girlToGirl },
+  },
+  { _id: false },
+);
+
 const settingsSchema = new mongoose.Schema(
   {
     key: { type: String, default: SETTINGS_SINGLETON_KEY, unique: true, immutable: true },
@@ -197,6 +208,7 @@ const settingsSchema = new mongoose.Schema(
     appVersion: { type: appVersionSchema, default: () => ({}) },
     earnings: { type: earningsSchema, default: () => ({}) },
     ads: { type: adsSchema, default: () => ({}) },
+    referral: { type: referralSchema, default: () => ({}) },
     updatedByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true },

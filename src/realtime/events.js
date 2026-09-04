@@ -64,6 +64,10 @@ export const SOCKET_EVENT = Object.freeze({
   SUPPORT_TICKET_CREATED: 'support:ticket:created',
   SUPPORT_TICKET_UPDATED: 'support:ticket:updated',
 
+  // In-app Broadcast Notifications
+  NOTIFICATION_NEW: 'notification:new',
+  NOTIFICATION_COUNT_UPDATED: 'notification:count:updated',
+
   // Generic error channel
   ERROR: 'app:error',
 });

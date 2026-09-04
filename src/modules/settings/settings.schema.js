@@ -107,6 +107,16 @@ export const updateSettingsSchema = z
       })
       .strict()
       .optional(),
+    referral: z
+      .object({
+        enabled: z.boolean().optional(),
+        boyToBoy: z.number().int().min(0).max(10_000).optional(),
+        boyToGirl: z.number().int().min(0).max(10_000).optional(),
+        girlToBoy: z.number().int().min(0).max(10_000).optional(),
+        girlToGirl: z.number().int().min(0).max(10_000).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {

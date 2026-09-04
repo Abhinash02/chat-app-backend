@@ -42,6 +42,11 @@ export async function getChatSettings() {
   return settings.chat;
 }
 
+export async function getReferralSettings() {
+  const settings = await getSettings();
+  return settings.referral;
+}
+
 /**
  * Public, unauthenticated slice — what the mobile app needs before login.
  * Deliberately excludes moderation word lists and admin bookkeeping.
@@ -93,8 +98,15 @@ export async function getPublicSettings() {
     },
     ads: settings.ads ?? {
       homeBottomAdProvider: 'admin',
-      admobBannerUnitId: 'ca-app-pub-3940256099942544/6300978111',
+      admobBannerUnitId: 'ca-app-pub-1028685120327829/9588291921',
       showSponsoredBadge: true,
+    },
+    referral: settings.referral ?? {
+      enabled: true,
+      boyToBoy: 10,
+      boyToGirl: 10,
+      girlToBoy: 10,
+      girlToGirl: 10,
     },
   };
 }
@@ -125,6 +137,7 @@ export const settingsService = {
   getSettings,
   getCoinSettings,
   getChatSettings,
+  getReferralSettings,
   getPublicSettings,
   updateSettings,
   invalidateSettingsCache,

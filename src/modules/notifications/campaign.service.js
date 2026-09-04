@@ -116,8 +116,12 @@ export async function queueCampaign({ campaignId, scheduledAt = null }) {
   const campaign = await notificationRepository.findCampaignById(campaignId);
   if (!campaign) throw new NotFoundError('Campaign not found', 'CAMPAIGN_NOT_FOUND');
 
-  if (campaign.status === CAMPAIGN_STATUS.SENDING || campaign.status === CAMPAIGN_STATUS.QUEUED) {
-    throw new ConflictError('This campaign is currently being sent', 'CAMPAIGN_IN_PROGRESS');
+  if (
+    campaign.status === CAMPAIGN_STATUS.SENT ||
+    campaign.status === CAMPAIGN_STATUS.SENDING ||
+    campaign.status === CAMPAIGN_STATUS.QUEUED
+  ) {
+    throw new ConflictError('This campaign has already been queued or sent', 'CAMPAIGN_ALREADY_SENT');
   }
 
   const filter = await buildAudienceFilter(campaign.audience);

@@ -97,7 +97,18 @@ export const DEFAULT_SETTINGS = Object.freeze({
   },
   ads: {
     homeBottomAdProvider: 'admin',
-    admobBannerUnitId: 'ca-app-pub-3940256099942544/6300978111',
+    admobBannerUnitId: 'ca-app-pub-1028685120327829/9588291921',
     showSponsoredBadge: true,
+  },
+  referral: {
+    enabled: true,
+    /** Coins the referrer (A) earns when a Boy refers a Boy. */
+    boyToBoy: 10,
+    /** Coins the referrer (A) earns when a Boy refers a Girl. */
+    boyToGirl: 10,
+    /** Coins the referrer (A) earns when a Girl refers a Boy. */
+    girlToBoy: 10,
+    /** Coins the referrer (A) earns when a Girl refers a Girl. */
+    girlToGirl: 10,
   },
 });

@@ -40,6 +40,17 @@ export const coinsController = {
     return sendSuccess(res, result);
   }),
 
+  consumeFreeTalk: asyncHandler(async (req, res) => {
+    const { seconds } = req.body;
+    const burnSeconds = Math.min(Math.max(1, Math.round(Number(seconds) || 1)), 300);
+    const snapshot = await coinsService.consumeFreeTalk({
+      userId: req.user.id,
+      gender: req.user.gender,
+      seconds: burnSeconds,
+    });
+    return sendSuccess(res, snapshot);
+  }),
+
   // ----- Admin -----------------------------------------------------------
 
   listAllPackages: asyncHandler(async (_req, res) => {

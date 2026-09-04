@@ -11,6 +11,7 @@ export const COIN_TRANSACTION_TYPE = Object.freeze({
   ADMIN_CREDIT: 'admin_credit',
   ADMIN_DEBIT: 'admin_debit',
   REFUND: 'refund',
+  REFERRAL_BONUS: 'referral_bonus',
 });
 
 /** Why a message was allowed through — surfaced to the client for the UI copy. */

@@ -28,6 +28,7 @@ const CREDIT_TYPES = new Set([
   COIN_TRANSACTION_TYPE.WITHDRAWAL_REFUND,
   COIN_TRANSACTION_TYPE.ADMIN_CREDIT,
   COIN_TRANSACTION_TYPE.REFUND,
+  COIN_TRANSACTION_TYPE.REFERRAL_BONUS,
 ]);
 
 function directionFor(type) {
@@ -356,23 +357,25 @@ export async function authorizeMessage({ userId, gender, conversationId }) {
  */
 export async function consumeFreeTalk({ userId, gender, seconds }) {
   const coinSettings = await settingsService.getCoinSettings();
-  if (!isChargedGender(gender, coinSettings)) return null;
+  if (!isChargedGender(gender, coinSettings)) {
+    return getWalletSnapshot({ userId, gender });
+  }
 
   const wallet = await walletRepository.consumeFreeTalkSeconds(userId, seconds);
-  if (!wallet) return null;
+  const currentWallet = wallet || (await walletRepository.findOrCreate(userId, {}));
 
-  const snapshot = buildWalletSnapshot({ wallet, coinSettings, gender });
+  const snapshot = buildWalletSnapshot({ wallet: currentWallet, coinSettings, gender });
 
   emitToUser(userId, SOCKET_EVENT.FREE_TALK_TICK, {
-    freeTalkSecondsRemaining: wallet.freeTalkSecondsRemaining,
-    coinBalance: wallet.coinBalance,
+    freeTalkSecondsRemaining: currentWallet.freeTalkSecondsRemaining,
+    coinBalance: currentWallet.coinBalance,
   });
 
-  if (wallet.freeTalkSecondsRemaining === 0) {
+  if (currentWallet.freeTalkSecondsRemaining === 0) {
     emitToUser(userId, SOCKET_EVENT.FREE_TALK_EXHAUSTED, {
       messagesPerBlock: coinSettings.messagesPerBlock,
       coinsPerBlock: coinSettings.coinsPerBlock,
-      coinBalance: wallet.coinBalance,
+      coinBalance: currentWallet.coinBalance,
     });
     pushWalletUpdate({ userId, snapshot });
   }

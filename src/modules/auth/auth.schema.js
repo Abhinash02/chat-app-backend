@@ -26,6 +26,7 @@ export const registerSchema = z
     gender: z.nativeEnum(GENDER, { errorMap: () => ({ message: 'Select your gender' }) }),
     ageGroup: z.string().trim().max(30).optional().nullable(),
     zodiacSign: z.string().trim().max(40).optional().nullable(),
+    referralCode: z.string().trim().min(6).max(20).optional().nullable(),
   })
   .strict();
 

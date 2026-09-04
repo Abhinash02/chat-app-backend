@@ -79,20 +79,30 @@ export function registerChatHandlers(socket) {
     }
   });
 
-  socket.on(SOCKET_EVENT.CHAT_HEARTBEAT, async ({ conversationId } = {}) => {
+  socket.on(SOCKET_EVENT.CHAT_HEARTBEAT, async ({ conversationId, seconds } = {}) => {
     try {
+      const now = Date.now();
       const chatSettings = await settingsService.getChatSettings();
-      const intervalMs = chatSettings.heartbeatIntervalSeconds * 1000;
+      let burnSeconds = chatSettings.heartbeatIntervalSeconds || 5;
 
-      // Allow a little jitter, but never let two ticks count as two intervals.
-      if (Date.now() - lastHeartbeatAt < intervalMs * 0.8) return;
-      lastHeartbeatAt = Date.now();
+      if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0) {
+        burnSeconds = Math.min(Math.max(1, Math.round(seconds)), 120);
+      }
 
-      await chatService.loadParticipantConversation({ conversationId, userId: user.id });
+      // Minimum rate limit between rapid consecutive ticks
+      if (lastHeartbeatAt > 0 && now - lastHeartbeatAt < 800 && (!seconds || seconds <= 1)) {
+        return;
+      }
+      lastHeartbeatAt = now;
+
+      if (conversationId) {
+        await chatService.loadParticipantConversation({ conversationId, userId: user.id });
+      }
+
       await coinsService.consumeFreeTalk({
         userId: user.id,
         gender: user.gender,
-        seconds: chatSettings.heartbeatIntervalSeconds,
+        seconds: burnSeconds,
       });
     } catch (error) {
       emitError(socket, SOCKET_EVENT.CHAT_HEARTBEAT, error);

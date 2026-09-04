@@ -78,6 +78,7 @@ const raw = parsed.data;
 
 export const env = Object.freeze({
   ...raw,
+  isDevelopment: raw.NODE_ENV === 'development',
   isProduction: raw.NODE_ENV === 'production',
   isTest: raw.NODE_ENV === 'test',
   corsOrigins: raw.CORS_ORIGINS.split(',')

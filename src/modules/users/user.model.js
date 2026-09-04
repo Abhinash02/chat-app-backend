@@ -90,6 +90,17 @@ const userSchema = new mongoose.Schema(
 
     suspendedReason: { type: String, default: null },
     lastLoginAt: { type: Date, default: null },
+
+    /**
+     * Unique 8-character code generated at signup. Shared via a deep-link so
+     * friends can register under this user's referral.
+     */
+    referralCode: { type: String, default: null, index: true },
+    /**
+     * The userId of whoever referred this user. Null if they signed up
+     * organically. Set once at signup and never changed.
+     */
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   {
     timestamps: true,

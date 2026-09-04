@@ -11,7 +11,7 @@ function buildLimiter({ windowMs, max, code, message }) {
     standardHeaders: true,
     legacyHeaders: false,
     // Tests and local development would otherwise trip limits constantly.
-    skip: () => env.isTest,
+    skip: () => env.isTest || env.isDevelopment,
     keyGenerator: (req) => req.user?.id ?? req.ip,
     handler: (_req, res) => {
       res.status(429).json({ success: false, error: { code, message } });
@@ -29,7 +29,7 @@ export const globalRateLimiter = buildLimiter({
 /** Credential endpoints are the cheapest thing to brute force, so they are tightest. */
 export const authRateLimiter = buildLimiter({
   windowMs: 15 * ONE_MINUTE,
-  max: 20,
+  max: env.isDevelopment ? 200 : 20,
   code: 'AUTH_RATE_LIMITED',
   message: 'Too many attempts. Please try again in a few minutes.',
 });
@@ -37,7 +37,7 @@ export const authRateLimiter = buildLimiter({
 /** Sending mail costs money and can be used to spam a third party's inbox. */
 export const otpRateLimiter = buildLimiter({
   windowMs: 15 * ONE_MINUTE,
-  max: 5,
+  max: env.isDevelopment ? 100 : 5,
   code: 'OTP_RATE_LIMITED',
   message: 'Too many verification codes requested. Please wait before trying again.',
 });

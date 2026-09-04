@@ -39,7 +39,15 @@ class ThemeRepository {
   async upsertPreset(preset) {
     return ThemeModel.findOneAndUpdate(
       { slug: preset.slug },
-      { $setOnInsert: { ...preset, isPreset: true } },
+      {
+        $set: {
+          name: preset.name,
+          description: preset.description,
+          colors: preset.colors,
+          isDark: preset.isDark,
+          isPreset: true,
+        },
+      },
       { new: true, upsert: true, setDefaultsOnInsert: true },
     )
       .lean()

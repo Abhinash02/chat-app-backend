@@ -245,7 +245,14 @@ export async function joinRoom({ user, roomId, passcode }) {
 
 export async function leaveRoom({ user, roomId }) {
   const room = await roomRepository.findById(roomId);
-  if (!room) return { left: true };
+  if (!room) return { left: true, roomClosed: false };
+
+  // If the host leaves, close the room for all participants
+  if (String(room.hostId) === String(user.id)) {
+    await roomRepository.close(roomId);
+    emitToRoom(roomId, SOCKET_EVENT.ROOM_CLOSED, { roomId: String(roomId), reason: 'HOST_LEFT' });
+    return { left: true, roomClosed: true };
+  }
 
   const updated = await roomRepository.removeParticipant({ roomId, userId: user.id });
   if (updated) {

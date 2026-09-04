@@ -4,6 +4,7 @@ import {
   authenticate,
   requireAdmin,
   requireVerifiedAccount,
+  uploadMedia,
   validate,
 } from '#src/common/middleware/index.js';
 import { notificationController } from '#src/modules/notifications/notification.controller.js';
@@ -54,9 +55,21 @@ router.post(
   notificationController.sendTestPush,
 );
 
-// ----- Admin: campaigns ---------------------------------------------------
+// ----- App: In-App Notifications (User) ----------------------------------
+
+router.get('/', notificationController.getUserNotifications);
+router.get('/unread-count', notificationController.getUnreadCount);
+router.patch('/:id/read', notificationController.markRead);
+router.post('/read-all', notificationController.markAllRead);
+router.delete('/:id', notificationController.deleteUserNotification);
+
+// ----- Admin: Broadcast & campaigns --------------------------------------
 
 router.use(requireAdmin);
+
+router.post('/broadcast', uploadMedia.single('image'), notificationController.broadcastInApp);
+router.get('/admin/list', notificationController.listInAppAdmin);
+router.delete('/admin/:id', notificationController.deleteInAppAdmin);
 
 router.get('/reach', notificationController.getReach);
 router.post('/audience/preview', validate({ body: audienceSchema }), notificationController.previewAudience);
