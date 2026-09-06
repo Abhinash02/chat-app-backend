@@ -16,7 +16,11 @@ const supportTicketSchema = new mongoose.Schema(
     },
     issueType: {
       type: String,
-      enum: ['billing', 'account', 'technical', 'bug', 'other'],
+      // 'safety' covers abuse, harassment and anything else the conduct rules
+      // in the Terms of Use forbid. It is separate from the in-chat report
+      // button on purpose: that reports one conversation, while this is for
+      // someone who needs to talk to a person about what happened.
+      enum: ['billing', 'account', 'technical', 'bug', 'safety', 'other'],
       default: 'other',
     },
     subject: {

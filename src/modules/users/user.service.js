@@ -30,6 +30,7 @@ function toPublicProfile(user, { showDistance = false, isFollowing = false, foll
     avatarColor: user.avatarColor ?? null,
     bio: user.bio ?? '',
     interests: user.interests ?? [],
+    languages: user.languages ?? [],
     isOnline: Boolean(user.isOnline),
     lastSeenAt: user.lastSeenAt ?? null,
     gamePoints: user.gamePoints ?? 0,
@@ -60,6 +61,7 @@ function toOwnProfile(user, { followersCount = 0 } = {}) {
     hasPhoto: Boolean(user.avatarUrl),
     bio: user.bio ?? '',
     interests: user.interests ?? [],
+    languages: user.languages ?? [],
     preferences: user.preferences,
     gamePoints: user.gamePoints ?? 0,
     isOnline: Boolean(user.isOnline),
@@ -207,7 +209,18 @@ export async function updateLocation({ userId, latitude, longitude, city, countr
  * accounts only, online ones first. Passing coordinates switches to a
  * distance-ordered feed backed by the 2dsphere index.
  */
-export async function discoverUsers({ viewer, page, limit, onlineOnly, search, latitude, longitude, radiusKm }) {
+export async function discoverUsers({
+  viewer,
+  page,
+  limit,
+  onlineOnly,
+  search,
+  languages,
+  matchMyLanguages,
+  latitude,
+  longitude,
+  radiusKm,
+}) {
   const settings = await settingsService.getSettings();
   const { skip, page: safePage, limit: safeLimit } = resolvePagination({ page, limit });
 
@@ -216,6 +229,21 @@ export async function discoverUsers({ viewer, page, limit, onlineOnly, search, l
 
   const excludeUserIds = await buildExclusionList({ id: me._id, blockedUserIds: me.blockedUserIds });
   const targetGender = oppositeGenderOf(me.gender);
+
+  /*
+   * Which languages to filter on.
+   *
+   * An explicit list wins, so the client can offer a one-off filter. Otherwise
+   * `matchMyLanguages` means "people I could actually talk to", resolved from
+   * the viewer's own choices here rather than trusted from the request — the
+   * client should not be able to ask for someone else's preferences.
+   *
+   * Falls back to no filter when the viewer never picked any, which is what
+   * keeps accounts created before this feature from seeing an empty feed.
+   */
+  const languageFilter = languages?.length
+    ? languages
+    : (matchMyLanguages ? (me.languages ?? []) : []);
 
   const useLocation = latitude !== undefined && longitude !== undefined;
 
@@ -231,6 +259,7 @@ export async function discoverUsers({ viewer, page, limit, onlineOnly, search, l
       radiusKm: cappedRadius,
       excludeUserIds,
       onlineOnly,
+      languages: languageFilter,
       skip,
       limit: safeLimit,
     });
@@ -240,7 +269,11 @@ export async function discoverUsers({ viewer, page, limit, onlineOnly, search, l
         showDistance: settings.discovery.showDistance,
         isFollowing: (me.followingUserIds ?? []).some((id) => String(id) === String(item._id)),
       })),
-      meta: { ...buildPaginationMeta({ page: safePage, limit: safeLimit, total }), radiusKm: cappedRadius },
+      meta: {
+        ...buildPaginationMeta({ page: safePage, limit: safeLimit, total }),
+        radiusKm: cappedRadius,
+        languages: languageFilter,
+      },
     };
   }
 
@@ -249,6 +282,7 @@ export async function discoverUsers({ viewer, page, limit, onlineOnly, search, l
     excludeUserIds,
     onlineOnly,
     search,
+    languages: languageFilter,
     skip,
     limit: safeLimit,
   });
@@ -257,7 +291,7 @@ export async function discoverUsers({ viewer, page, limit, onlineOnly, search, l
     items: items.map((item) => toPublicProfile(item, {
       isFollowing: (me.followingUserIds ?? []).some((id) => String(id) === String(item._id)),
     })),
-    meta: buildPaginationMeta({ page: safePage, limit: safeLimit, total }),
+    meta: { ...buildPaginationMeta({ page: safePage, limit: safeLimit, total }), languages: languageFilter },
   };
 }
 

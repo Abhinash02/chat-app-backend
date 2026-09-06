@@ -30,3 +30,20 @@ export const COIN_TRANSACTION_DIRECTION = Object.freeze({
   CREDIT: 'credit',
   DEBIT: 'debit',
 });
+
+/**
+ * What one message costs against the introductory free-talk allowance.
+ *
+ * The allowance is measured in seconds and was only ever burned down by the
+ * chat screen's socket heartbeat. That made it a time budget that messaging
+ * never touched: an account whose heartbeat did not arrive — app backgrounded,
+ * flaky network, a client that simply never emits it — kept `freeTalkSeconds
+ * Remaining > 0` forever and chatted free forever with it.
+ *
+ * Charging the allowance on send as well closes that, and does it in the
+ * allowance's own unit so the two paths draw on one budget instead of two.
+ * At the default 30 minutes this caps the free period at 180 messages, which
+ * is far more than a real conversation reaches inside half an hour — so it
+ * bites only on the abuse it exists to stop.
+ */
+export const FREE_TALK_SECONDS_PER_MESSAGE = 10;

@@ -29,6 +29,9 @@ router.get('/packages', coinsController.listPackages);
 router.post('/consume-free-talk', requireVerifiedAccount, coinsController.consumeFreeTalk);
 router.get('/daily-bonus', requireVerifiedAccount, coinsController.getDailyBonusStatus);
 router.post('/daily-bonus/claim', requireVerifiedAccount, coinsController.claimDailyBonus);
+/* Dismissing is a real choice, so it is a real request: it advances the
+   interval server-side rather than being hidden in client state. */
+router.post('/daily-bonus/skip', requireVerifiedAccount, coinsController.skipDailyBonus);
 
 // ----- Admin package management -----------------------------------------
 

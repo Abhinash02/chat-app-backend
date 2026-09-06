@@ -54,6 +54,55 @@ export const razorpayGateway = {
   },
 
   /**
+   * A hosted checkout page, for clients that cannot run the browser SDK.
+   *
+   * Razorpay's standard checkout is JavaScript in a page — there is no native
+   * equivalent and no way to turn an order id into a URL. A Payment Link is the
+   * supported answer: Razorpay hosts the page, the app opens it in the device
+   * browser, and the result comes back over the webhook like any other payment.
+   *
+   * `reference_id` carries our own order id so the webhook can find its way
+   * back here, and `notes` repeats it because the two travel in different parts
+   * of different events.
+   */
+  async createPaymentLink({
+    amountInPaise,
+    currency = 'INR',
+    description,
+    referenceId,
+    customer = {},
+    notes = {},
+    callbackUrl,
+  }) {
+    const link = await getClient().paymentLink.create({
+      amount: amountInPaise,
+      currency,
+      description,
+      reference_id: referenceId,
+      customer: {
+        name: customer.name || undefined,
+        email: customer.email || undefined,
+        contact: customer.contact || undefined,
+      },
+      notify: { sms: false, email: false },
+      reminder_enable: false,
+      notes: { ...notes, referenceId },
+      ...(callbackUrl ? { callback_url: callbackUrl, callback_method: 'get' } : {}),
+    });
+
+    return {
+      paymentLinkId: link.id,
+      shortUrl: link.short_url,
+      status: link.status,
+    };
+  },
+
+  /** Current state of a hosted link, for confirming without waiting on a webhook. */
+  async fetchPaymentLink(paymentLinkId) {
+    return getClient().paymentLink.fetch(paymentLinkId);
+  },
+
+  /**
    * Confirms a client-reported success. The signature proves Razorpay produced
    * this (order, payment) pair — the client cannot forge it without the secret.
    */

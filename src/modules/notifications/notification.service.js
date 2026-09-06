@@ -100,8 +100,16 @@ export async function sendToUser({ userId, title, body, data = {}, channelId = P
       .map((ticket) => ticket.token);
     if (dead.length > 0) await notificationRepository.deactivateTokens(dead, 'DeviceNotRegistered');
 
-    const sentCount = tickets.filter((ticket) => ticket.ok).length || devices.length;
-    return { sent: sentCount, retired: dead.length };
+    /*
+     * The true count, not an optimistic one.
+     *
+     * This used to fall back to `devices.length` whenever no ticket came back
+     * ok — so a push that failed for every single device reported as fully
+     * delivered. `failed` is returned alongside it so a caller can tell the
+     * difference between "nobody was registered" and "every send was rejected".
+     */
+    const sentCount = tickets.filter((ticket) => ticket.ok).length;
+    return { sent: sentCount, failed: tickets.length - sentCount, retired: dead.length };
   } catch (error) {
     logger.error({ err: error, userId }, 'Transactional push failed');
     return { sent: 0, error: true };

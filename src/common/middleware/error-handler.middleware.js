@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import multer from 'multer';
 
 import { AppError, NotFoundError } from '#src/common/errors/index.js';
 import { sendError } from '#src/common/utils/response.util.js';
@@ -21,6 +22,28 @@ function normalizeError(error) {
       code: error.code,
       message: error.message,
       details: error.details,
+      isOperational: true,
+    };
+  }
+
+  /*
+   * Multer rejects at the transport layer, before any handler runs, so its
+   * errors arrive here rather than as an AppError. Left untranslated they
+   * surface as a bare 500 — telling someone the server broke when in fact they
+   * attached one file too many, or one too large.
+   */
+  if (error instanceof multer.MulterError) {
+    const MESSAGES = {
+      LIMIT_FILE_COUNT: 'You attached more files than this allows',
+      LIMIT_FILE_SIZE: 'That file is too large',
+      LIMIT_UNEXPECTED_FILE: 'That file field is not accepted here',
+      LIMIT_PART_COUNT: 'That upload had too many parts',
+    };
+
+    return {
+      statusCode: 400,
+      code: error.code ?? 'UPLOAD_REJECTED',
+      message: MESSAGES[error.code] ?? 'That upload was rejected',
       isOperational: true,
     };
   }

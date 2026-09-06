@@ -101,6 +101,7 @@ export const updateSettingsSchema = z
       .optional(),
     ads: z
       .object({
+        homeTopBannerEnabled: z.boolean().optional(),
         homeBottomAdProvider: z.enum(['admin', 'admob', 'off']).optional(),
         admobBannerUnitId: z.string().trim().max(150).optional(),
         showSponsoredBadge: z.boolean().optional(),

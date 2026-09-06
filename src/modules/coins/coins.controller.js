@@ -40,6 +40,14 @@ export const coinsController = {
     return sendSuccess(res, result);
   }),
 
+  skipDailyBonus: asyncHandler(async (req, res) => {
+    const result = await coinsService.skipDailyBonus({
+      userId: req.user.id,
+      gender: req.user.gender,
+    });
+    return sendSuccess(res, result);
+  }),
+
   consumeFreeTalk: asyncHandler(async (req, res) => {
     const { seconds } = req.body;
     const burnSeconds = Math.min(Math.max(1, Math.round(Number(seconds) || 1)), 300);

@@ -85,6 +85,26 @@ class StatusRepository {
   }
 
   /**
+   * Whether one specific author is visible to a viewer.
+   *
+   * The same rule as `findVisibleAuthorIds`, asked about a single account.
+   * Opening one ring does not need the app-wide set of visible authors built
+   * and thrown away to answer a single membership test — that made the cost of
+   * tapping a story grow with the number of stories everyone else had posted.
+   */
+  async isAuthorVisible({ authorId, gender }) {
+    const UserModel = mongoose.model('User');
+
+    const match = await UserModel.exists({
+      _id: new mongoose.Types.ObjectId(String(authorId)),
+      gender,
+      status: USER_STATUS.ACTIVE,
+    });
+
+    return Boolean(match);
+  }
+
+  /**
    * Records a view exactly once.
    *
    * `$ne` in the filter is what makes a re-open idempotent: the second read of
@@ -96,6 +116,33 @@ class StatusRepository {
     return StatusModel.findOneAndUpdate(
       { _id: statusId, 'viewers.userId': { $ne: viewerId } },
       { $push: { viewers: { userId: viewerId, viewedAt: new Date() } }, $inc: { viewCount: 1 } },
+      { new: true },
+    )
+      .lean()
+      .exec();
+  }
+
+  /**
+   * Likes and unlikes, each atomic and each idempotent.
+   *
+   * The `$ne` / equality in the filter is what makes a double tap or a retried
+   * request settle rather than double-count: the second one matches nothing.
+   * Array and counter move in a single update, so they cannot disagree.
+   */
+  async like({ statusId, userId }) {
+    return StatusModel.findOneAndUpdate(
+      { _id: statusId, likedBy: { $ne: userId } },
+      { $push: { likedBy: userId }, $inc: { likeCount: 1 } },
+      { new: true },
+    )
+      .lean()
+      .exec();
+  }
+
+  async unlike({ statusId, userId }) {
+    return StatusModel.findOneAndUpdate(
+      { _id: statusId, likedBy: userId },
+      { $pull: { likedBy: userId }, $inc: { likeCount: -1 } },
       { new: true },
     )
       .lean()

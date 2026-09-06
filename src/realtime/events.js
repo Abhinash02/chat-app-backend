@@ -41,7 +41,13 @@ export const SOCKET_EVENT = Object.freeze({
 
   // Status / stories
   STATUS_NEW: 'status:new',
+
+  /* Photo posts. Only the encouraging half is emitted: an author hears about a
+     like or a comment, never about an unlike. */
+  POST_LIKED: 'post:liked',
+  POST_COMMENTED: 'post:commented',
   STATUS_VIEWED: 'status:viewed',
+  STATUS_LIKED: 'status:liked',
 
   // Games
   LEADERBOARD_UPDATED: 'leaderboard:updated',

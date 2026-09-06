@@ -49,14 +49,20 @@ class SupportService {
       throw new BadRequestError('Please provide a message describing your issue or attach a screenshot.');
     }
 
-    const validCategories = new Set(['billing', 'account', 'technical', 'bug', 'other']);
+    const validCategories = new Set(['billing', 'account', 'technical', 'bug', 'safety', 'other']);
     const safeCategory = validCategories.has(issueType) ? issueType : 'other';
+
+    // Safety reports go to the top of the queue. Someone being harassed should
+    // not wait behind a batch of "my coins did not arrive" tickets, and the
+    // person filing it has no way to flag urgency themselves.
+    const priority = safeCategory === 'safety' ? 'high' : 'medium';
 
     const ticketId = this.generateTicketId();
 
     const ticket = await SupportTicketModel.create({
       ticketId,
       userId,
+      priority,
       issueType: safeCategory,
       subject,
       lastMessage: textMessage || (safeAttachments.length > 0 ? '📷 Image attached' : ''),

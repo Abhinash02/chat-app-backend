@@ -1,3 +1,4 @@
+import { DEFAULT_BLOCKED_WORDS } from '#src/common/constants/blocked-words.js';
 /** There is exactly one settings document; this is its stable key. */
 export const SETTINGS_SINGLETON_KEY = 'default';
 
@@ -75,7 +76,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
   },
   moderation: {
     profanityFilterEnabled: true,
-    blockedWords: [],
+    // Seeded rather than empty. An enabled filter with nothing in its list
+    // screens nothing, which is worse than being off: the Terms of Use tell
+    // people their messages are filtered, and that has to be true on day one
+    // rather than after an admin remembers to fill the box in.
+    blockedWords: [...DEFAULT_BLOCKED_WORDS],
   },
   appVersion: {
     latestVersion: '1.0.0',
@@ -96,6 +101,15 @@ export const DEFAULT_SETTINGS = Object.freeze({
     payoutProvider: 'cashfree',
   },
   ads: {
+    /*
+     * The top carousel's own switch.
+     *
+     * The bottom ad space already had one (`homeBottomAdProvider: 'off'`); the
+     * top carousel had nothing, so turning the section off in the panel left it
+     * on the home screen and the only way to clear it was to switch every
+     * banner off one at a time.
+     */
+    homeTopBannerEnabled: true,
     homeBottomAdProvider: 'admin',
     admobBannerUnitId: 'ca-app-pub-1028685120327829/9588291921',
     showSponsoredBadge: true,

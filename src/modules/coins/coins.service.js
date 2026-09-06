@@ -14,6 +14,7 @@ import {
   BILLING_OUTCOME,
   COIN_TRANSACTION_DIRECTION,
   COIN_TRANSACTION_TYPE,
+  FREE_TALK_SECONDS_PER_MESSAGE,
 } from '#src/modules/coins/coins.constants.js';
 import { walletRepository } from '#src/modules/coins/wallet.repository.js';
 import { coinTransactionRepository } from '#src/modules/coins/coin-transaction.repository.js';
@@ -286,16 +287,41 @@ export async function authorizeMessage({ userId, gender, conversationId }) {
   const currentWallet = await walletRepository.findOrCreate(userId, {});
 
   if (currentWallet.freeTalkSecondsRemaining > 0) {
+    /*
+     * Burn the allowance for this message, not just for elapsed time.
+     *
+     * The socket heartbeat is the main consumer, but it is the client's to
+     * send — so it cannot be the only thing that depletes the budget, or an
+     * account that never heartbeats gets unlimited free messages. Sending draws
+     * on the same budget, which makes the free period end either way.
+     *
+     * The update is conditional on the balance still being above zero, so two
+     * messages racing here cannot both spend the last of it. A null result
+     * means another write got there first and the allowance is now empty; the
+     * message still goes through free — it was authorised against a balance
+     * that existed — and the next one falls through to the paid path below.
+     */
+    const burned = await walletRepository.consumeFreeTalkSeconds(
+      userId,
+      FREE_TALK_SECONDS_PER_MESSAGE,
+    );
+
+    const snapshot = buildWalletSnapshot({
+      wallet: burned ?? currentWallet,
+      coinSettings,
+      gender,
+      billing: { outcome: BILLING_OUTCOME.FREE_TALK, coinsCharged: 0 },
+    });
+
+    // Tell the client what is left, so the "free minutes remaining" copy tracks
+    // messaging as well as the heartbeat's ticks.
+    if (burned) pushWalletUpdate({ userId, snapshot });
+
     return {
       allowed: true,
       outcome: BILLING_OUTCOME.FREE_TALK,
       coinsCharged: 0,
-      snapshot: buildWalletSnapshot({
-        wallet: currentWallet,
-        coinSettings,
-        gender,
-        billing: { outcome: BILLING_OUTCOME.FREE_TALK, coinsCharged: 0 },
-      }),
+      snapshot,
     };
   }
 
@@ -548,6 +574,44 @@ export async function claimDailyBonus({ userId, gender }) {
   return { credited: coinSettings.dailyBonusCoins, snapshot };
 }
 
+/**
+ * Declines today's bonus.
+ *
+ * Dismissing the prompt starts the next interval without crediting anything —
+ * the coins for this window are forgone rather than banked. That is a product
+ * decision, not a technical one: it keeps the prompt honest (it is a real
+ * choice) and stops an unclaimed bonus queueing up forever.
+ *
+ * It reuses the claim's conditional filter, so this can only ever consume an
+ * interval that was actually available. A double tap, a retry or a replayed
+ * request finds nothing to update and is reported as already handled rather
+ * than silently burning the next window too.
+ */
+export async function skipDailyBonus({ userId, gender }) {
+  const coinSettings = await settingsService.getCoinSettings();
+
+  if (!isChargedGender(gender, coinSettings) || coinSettings.dailyBonusCoins <= 0) {
+    // Nothing was on offer, so there is nothing to decline. Not an error: the
+    // client is allowed to dismiss a prompt it should not have been shown.
+    const current = await walletRepository.findOrCreate(userId, {});
+    return { skipped: false, status: dailyBonusStatus({ wallet: current, coinSettings, gender }) };
+  }
+
+  await walletRepository.findOrCreate(userId, {});
+
+  const now = new Date();
+  const eligibleBefore = new Date(now.getTime() - coinSettings.dailyBonusIntervalHours * ONE_HOUR_MS);
+
+  const wallet = await walletRepository.skipDailyBonus(userId, { eligibleBefore, now });
+
+  if (!wallet) {
+    const current = await walletRepository.findOrCreate(userId, {});
+    return { skipped: false, status: dailyBonusStatus({ wallet: current, coinSettings, gender, now }) };
+  }
+
+  return { skipped: true, status: dailyBonusStatus({ wallet, coinSettings, gender, now }) };
+}
+
 export async function listTransactions({ userId, page, limit, type }) {
   const { skip, page: safePage, limit: safeLimit } = resolvePagination({ page, limit });
   const { items, total } = await coinTransactionRepository.listByUser({
@@ -638,4 +702,5 @@ export const coinsService = {
   resetFreeTalk,
   buildWalletSnapshot,
   isChargedGender,
+  skipDailyBonus,
 };

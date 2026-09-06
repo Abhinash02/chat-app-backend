@@ -96,10 +96,17 @@ export async function getPublicSettings() {
       appStoreUrl: 'https://apps.apple.com/app/id123456789',
       updateMessage: 'A new version of Vibe is available with performance improvements!',
     },
-    ads: settings.ads ?? {
+    /*
+     * Spread rather than `??`: a settings row saved before this field existed
+     * has an `ads` object, so the whole fallback was being skipped and the new
+     * key came back undefined. Merging fills in only what is missing.
+     */
+    ads: {
+      homeTopBannerEnabled: true,
       homeBottomAdProvider: 'admin',
       admobBannerUnitId: 'ca-app-pub-1028685120327829/9588291921',
       showSponsoredBadge: true,
+      ...(settings.ads ?? {}),
     },
     referral: settings.referral ?? {
       enabled: true,

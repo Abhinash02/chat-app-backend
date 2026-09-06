@@ -33,6 +33,15 @@ export const statusController = {
     return sendSuccess(res, result);
   }),
 
+  like: asyncHandler(async (req, res) => {
+    const result = await statusService.toggleLike({
+      user: req.user,
+      statusId: req.params.statusId,
+      like: req.body?.like,
+    });
+    return sendSuccess(res, result);
+  }),
+
   listViewers: asyncHandler(async (req, res) => {
     const result = await statusService.listViewers({ user: req.user, statusId: req.params.statusId });
     return sendSuccess(res, result);

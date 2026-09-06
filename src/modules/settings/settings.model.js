@@ -167,6 +167,10 @@ const earningsSchema = new mongoose.Schema(
 
 const adsSchema = new mongoose.Schema(
   {
+    homeTopBannerEnabled: {
+      type: Boolean,
+      default: DEFAULT_SETTINGS.ads.homeTopBannerEnabled,
+    },
     homeBottomAdProvider: {
       type: String,
       enum: ['admin', 'admob', 'off'],

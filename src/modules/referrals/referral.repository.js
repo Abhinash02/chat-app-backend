@@ -1,3 +1,5 @@
+import mongoose from 'mongoose';
+
 import { ReferralModel } from '#src/modules/referrals/referral.model.js';
 
 export const referralRepository = {
@@ -43,8 +45,22 @@ export const referralRepository = {
    * Aggregate stats for a referrer.
    */
   async statsByReferrer(referrerId) {
+    /*
+     * The id has to be cast by hand.
+     *
+     * `find()` casts a string id against the schema for you; an aggregation
+     * pipeline does not — `$match` is handed to the server as written. So a
+     * string here was compared against stored ObjectIds, matched nothing, and
+     * this returned a confident zero no matter how many referrals existed. The
+     * refer screen showed "0 referrals, 0 coins" to people who had both.
+     */
     const result = await ReferralModel.aggregate([
-      { $match: { referrerId: referrerId, status: 'completed' } },
+      {
+        $match: {
+          referrerId: new mongoose.Types.ObjectId(String(referrerId)),
+          status: 'completed',
+        },
+      },
       {
         $group: {
           _id: null,

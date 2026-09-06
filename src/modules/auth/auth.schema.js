@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { GENDER } from '#src/common/constants/index.js';
+import { GENDER, MAX_LANGUAGES_PER_USER, SPOKEN_LANGUAGE_CODES } from '#src/common/constants/index.js';
 import { emailSchema, otpSchema, passwordSchema } from '#src/common/validators/common.schema.js';
 
 const nameSchema = z
@@ -27,6 +27,16 @@ export const registerSchema = z
     ageGroup: z.string().trim().max(30).optional().nullable(),
     zodiacSign: z.string().trim().max(40).optional().nullable(),
     referralCode: z.string().trim().min(6).max(20).optional().nullable(),
+    /*
+     * Optional so an older client that does not send it can still register.
+     * Duplicates are collapsed rather than rejected: a repeated code is a
+     * client bug, not something to fail a signup over.
+     */
+    languages: z
+      .array(z.enum(SPOKEN_LANGUAGE_CODES))
+      .max(MAX_LANGUAGES_PER_USER, `Pick at most ${MAX_LANGUAGES_PER_USER} languages`)
+      .optional()
+      .transform((values) => (values ? [...new Set(values)] : undefined)),
   })
   .strict();
 

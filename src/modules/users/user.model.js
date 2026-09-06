@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-import { GENDER, USER_ROLE, USER_STATUS } from '#src/common/constants/index.js';
+import { GENDER, MAX_LANGUAGES_PER_USER, SPOKEN_LANGUAGE_CODES, USER_ROLE, USER_STATUS } from '#src/common/constants/index.js';
 
 const locationSchema = new mongoose.Schema(
   {
@@ -70,6 +70,27 @@ const userSchema = new mongoose.Schema(
     zodiacSign: { type: String, trim: true, default: null },
     interests: { type: [String], default: [] },
 
+    /**
+     * Languages this person is happy talking in, chosen at signup.
+     *
+     * Stored as codes from SPOKEN_LANGUAGES rather than free text, so the
+     * discovery filter is an index lookup instead of a fuzzy match on whatever
+     * spelling of "Punjabi" someone typed. Empty means "no preference stated",
+     * which discovery treats as matching everyone rather than nobody — an
+     * account created before this field existed must not vanish from the feed.
+     */
+    languages: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: (values) =>
+          Array.isArray(values)
+          && values.length <= MAX_LANGUAGES_PER_USER
+          && values.every((value) => SPOKEN_LANGUAGE_CODES.includes(value)),
+        message: 'Pick up to five languages from the supported list',
+      },
+    },
+
     emailVerifiedAt: { type: Date, default: null },
     /** Any token issued before this instant is rejected (password change, forced logout). */
     tokensValidFrom: { type: Date, default: null },
@@ -123,6 +144,10 @@ userSchema.index(
 );
 // Drives the "active users of the opposite gender" discovery query.
 userSchema.index({ gender: 1, status: 1, isOnline: -1, lastSeenAt: -1 });
+// Discovery filtered by a shared spoken language. Multikey on `languages`, with
+// the two equality fields ahead of it so the same index serves both the
+// filtered and unfiltered forms of the feed.
+userSchema.index({ gender: 1, status: 1, languages: 1 });
 userSchema.index({ 'location.coordinates': '2dsphere' });
 
 userSchema.virtual('hasLocation').get(function hasLocation() {

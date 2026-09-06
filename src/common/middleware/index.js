@@ -14,5 +14,6 @@ export {
   uploadAudio,
   uploadVideo,
   uploadMedia,
+  uploadPostImages,
   mediaKindOf,
 } from '#src/common/middleware/upload.middleware.js';

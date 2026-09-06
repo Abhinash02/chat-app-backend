@@ -73,6 +73,14 @@ function toStatusDto(status, viewerId) {
      * which is exactly the thing people expect it not to be.
      */
     viewCount: isOwn ? status.viewCount : undefined,
+
+    /*
+     * Likes are public both ways, unlike views: anyone can see the total, and
+     * the author is meant to. `hasLiked` is this viewer only — the full list of
+     * who liked is never sent, for the same reason the viewer list is not.
+     */
+    likeCount: status.likeCount ?? 0,
+    hasLiked: (status.likedBy ?? []).some((id) => String(id) === String(viewerId)),
     viewers: isOwn ? (status.viewers ?? []).map(toViewerDto).filter(Boolean) : undefined,
     hasViewed: isOwn ? undefined : (status.viewers ?? []).some((entry) => String(entry.userId?._id ?? entry.userId) === String(viewerId)),
     createdAt: status.createdAt,
@@ -277,17 +285,76 @@ export async function listByUser({ user, authorId }) {
   }
 
   const visibleGender = user.gender === GENDER.MALE ? GENDER.FEMALE : GENDER.MALE;
-  const allowed = await statusRepository.findVisibleAuthorIds({
+
+  /*
+   * Asked about this one author rather than by building the app-wide set of
+   * visible authors and testing membership in it. The old form ran a distinct
+   * over every live status plus a distinct over the matching users, so the
+   * delay before a story opened grew with how much everyone else had posted —
+   * work that was discarded except for a single yes/no.
+   */
+  const isVisible = await statusRepository.isAuthorVisible({
+    authorId,
     gender: visibleGender,
-    excludeUserIds: [user.id],
   });
 
-  if (!allowed.some((id) => String(id) === String(authorId))) {
+  if (!isVisible) {
     throw new ForbiddenError('You cannot see this status', 'STATUS_NOT_VISIBLE');
   }
 
   const items = await statusRepository.listLiveByAuthors([authorId]);
   return items.map((status) => toStatusDto(status, user.id));
+}
+
+/**
+ * Likes or unlikes a status.
+ *
+ * Anyone who can see the status can like it — including the author, the same as
+ * WhatsApp. The client sends the state it wants rather than a toggle, so a
+ * double tap or a retried request after a dropped response settles on one
+ * answer instead of flipping back.
+ */
+export async function toggleLike({ user, statusId, like }) {
+  const status = await statusRepository.findById(statusId);
+  if (!status) throw new NotFoundError('Status not found', 'STATUS_NOT_FOUND');
+
+  // An expired status is gone as far as anyone is concerned, even in the minute
+  // before the TTL sweep physically removes it.
+  if (new Date(status.expiresAt).getTime() <= Date.now()) {
+    throw new NotFoundError('Status not found', 'STATUS_NOT_FOUND');
+  }
+
+  const alreadyLiked = (status.likedBy ?? []).some((id) => String(id) === String(user.id));
+  const shouldLike = typeof like === 'boolean' ? like : !alreadyLiked;
+
+  if (shouldLike === alreadyLiked) {
+    return { liked: alreadyLiked, likeCount: status.likeCount ?? 0 };
+  }
+
+  const updated = shouldLike
+    ? await statusRepository.like({ statusId, userId: user.id })
+    : await statusRepository.unlike({ statusId, userId: user.id });
+
+  if (!updated) {
+    // A concurrent identical request won; its result is the truth.
+    const fresh = await statusRepository.findById(statusId);
+    return {
+      liked: (fresh?.likedBy ?? []).some((id) => String(id) === String(user.id)),
+      likeCount: fresh?.likeCount ?? 0,
+    };
+  }
+
+  // The author hears about a like, never about an unlike, and never about their
+  // own tap on their own status.
+  if (shouldLike && String(status.userId) !== String(user.id)) {
+    emitToUsers([String(status.userId)], SOCKET_EVENT.STATUS_LIKED, {
+      statusId: String(statusId),
+      likeCount: updated.likeCount,
+      actorNickname: user.nickname,
+    });
+  }
+
+  return { liked: shouldLike, likeCount: updated.likeCount };
 }
 
 /**
@@ -370,4 +437,5 @@ export const statusService = {
   markViewed,
   listViewers,
   deleteStatus,
+  toggleLike,
 };

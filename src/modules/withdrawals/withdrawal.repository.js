@@ -1,3 +1,6 @@
+import mongoose from 'mongoose';
+
+import { WITHDRAWAL_STATUS } from '#src/modules/withdrawals/withdrawal.constants.js';
 import { WithdrawalModel } from '#src/modules/withdrawals/withdrawal.model.js';
 
 class WithdrawalRepository {
@@ -47,6 +50,29 @@ class WithdrawalRepository {
 
   async updateById(id, patch) {
     return WithdrawalModel.findByIdAndUpdate(id, patch, { new: true }).lean().exec();
+  }
+
+  /**
+   * Coins already committed to withdrawals since `since`, for the daily cap.
+   *
+   * Rejected and failed requests are excluded: the coins were refunded, so
+   * holding them against the cap would punish someone for an admin's decision
+   * or a payout gateway's outage. Everything else — still pending, approved,
+   * processing, paid out — is money on its way out and counts.
+   */
+  async sumCoinsSince(userId, since) {
+    const [row] = await WithdrawalModel.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(String(userId)),
+          createdAt: { $gte: since },
+          status: { $nin: [WITHDRAWAL_STATUS.REJECTED, WITHDRAWAL_STATUS.FAILED] },
+        },
+      },
+      { $group: { _id: null, coins: { $sum: '$coins' } } },
+    ]).exec();
+
+    return row?.coins ?? 0;
   }
 
   async aggregateStats() {

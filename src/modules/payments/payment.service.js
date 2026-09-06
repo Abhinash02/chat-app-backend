@@ -176,8 +176,40 @@ export async function createRazorpayOrder({ user, packageId }) {
       notes: { userId: String(user.id), packageId: String(packageId) },
     });
 
+    /*
+     * A hosted link alongside the order, for the app.
+     *
+     * The browser SDK needs `keyId` + `orderId`; the mobile app cannot run it
+     * and needs a URL. Creating both means one endpoint serves both clients and
+     * neither has to know what the other uses.
+     *
+     * Best-effort on purpose: if link creation fails, the web checkout still
+     * works off the order above, so this must not take the whole payment down
+     * with it. The app checks for `shortUrl` and says something useful when it
+     * is missing, rather than failing silently the way it used to.
+     */
+    let paymentLink = null;
+    try {
+      paymentLink = await razorpayGateway.createPaymentLink({
+        amountInPaise: snapshot.amountInPaise,
+        currency: snapshot.currency,
+        description: `${snapshot.packageName} — ${snapshot.coins} coins`,
+        referenceId: String(order._id),
+        customer: { name: user.name, email: user.email },
+        notes: { userId: String(user.id), appOrderId: String(order._id) },
+      });
+    } catch (linkError) {
+      logger.warn(
+        { err: linkError, orderId: String(order._id) },
+        'Razorpay payment link creation failed — web checkout still available',
+      );
+    }
+
     const updated = await paymentRepository.updateById(order._id, {
-      $set: { providerOrderId: providerOrder.providerOrderId },
+      $set: {
+        providerOrderId: providerOrder.providerOrderId,
+        providerPaymentLinkId: paymentLink?.paymentLinkId ?? null,
+      },
     });
 
     return {
@@ -193,6 +225,9 @@ export async function createRazorpayOrder({ user, packageId }) {
         name: settings.payments.upiPayeeName || 'Coins',
         description: snapshot.packageName,
         prefill: { email: user.email, name: user.name },
+        // What the mobile app opens.
+        shortUrl: paymentLink?.shortUrl ?? null,
+        paymentLinkId: paymentLink?.paymentLinkId ?? null,
       },
     };
   } catch (error) {
@@ -333,6 +368,55 @@ export async function verifyRazorpayPayment({ user, orderId, razorpayPaymentId, 
     }
   }
 
+  /*
+   * 3. The hosted link the mobile app opened.
+   *
+   * The webhook is authoritative and will credit this order on its own, but it
+   * arrives when it arrives. Someone who has just paid and come back to the app
+   * should not be told nothing happened, so this asks Razorpay directly.
+   *
+   * The amount is re-checked against our own record rather than trusted from
+   * the link: this is the point where coins get created, and a link is a
+   * mutable thing on someone else's server.
+   */
+  if (order.providerPaymentLinkId && razorpayGateway.isConfigured) {
+    try {
+      const link = await razorpayGateway.fetchPaymentLink(order.providerPaymentLinkId);
+
+      if (link?.status === 'paid' && Number(link.amount_paid) >= Number(order.amountInPaise)) {
+        const linkPaymentId = link?.payments?.[0]?.payment_id ?? null;
+
+        const paid = await paymentRepository.markPaidOnce({
+          orderId: order._id,
+          providerPaymentId: linkPaymentId,
+          providerSignature: 'razorpay_payment_link_verified',
+        });
+
+        if (paid) {
+          const wallet = await creditOrder(paid);
+          return { order: toOrderDto(paid), wallet, alreadyCredited: false, status: PAYMENT_STATUS.PAID };
+        }
+
+        const settled = await paymentRepository.findById(order._id);
+        return { order: toOrderDto(settled), wallet: null, alreadyCredited: true, status: PAYMENT_STATUS.PAID };
+      }
+
+      if (link?.status === 'cancelled' || link?.status === 'expired') {
+        const updated = await paymentRepository.updateById(order._id, {
+          $set: { status: PAYMENT_STATUS.FAILED, failureReason: `Payment link ${link.status}` },
+        });
+        return {
+          order: toOrderDto(updated),
+          wallet: null,
+          alreadyCredited: false,
+          status: PAYMENT_STATUS.FAILED,
+        };
+      }
+    } catch (err) {
+      logger.warn({ err, orderId: String(order._id) }, 'Razorpay payment link status check failed');
+    }
+  }
+
   const current = await paymentRepository.findById(order._id);
   return {
     order: toOrderDto(current),
@@ -354,22 +438,46 @@ export async function handleRazorpayWebhook({ rawBody, signature }) {
   const event = JSON.parse(rawBody.toString('utf8'));
   const eventType = event?.event;
 
-  if (eventType !== 'payment.captured' && eventType !== 'order.paid') {
+  if (
+    eventType !== 'payment.captured' &&
+    eventType !== 'order.paid' &&
+    eventType !== 'payment_link.paid'
+  ) {
     logger.debug({ eventType }, 'Ignoring unhandled Razorpay event');
     return { handled: false, eventType };
   }
 
   const payment = event?.payload?.payment?.entity;
-  const providerOrderId = payment?.order_id ?? event?.payload?.order?.entity?.id;
 
-  if (!providerOrderId) {
-    logger.warn({ eventType }, 'Razorpay event carried no order id');
-    return { handled: false, eventType };
+  /*
+   * Two shapes of the same news.
+   *
+   * A web checkout produces a payment against the order we created, so the
+   * order id is on the payment. A Payment Link — what the mobile app opens —
+   * creates its own order inside Razorpay, so that id means nothing here; what
+   * ties it back is the link's own id, which we stored when the link was made.
+   *
+   * `reference_id` is the belt to that braces: it carries our order id, so a
+   * link paid before its id reached the database can still be matched.
+   */
+  const link = event?.payload?.payment_link?.entity;
+  let order = null;
+
+  if (link?.id) {
+    order = await paymentRepository.findByProviderPaymentLinkId(link.id);
+    if (!order && link.reference_id) {
+      order = await paymentRepository.findById(link.reference_id).catch(() => null);
+    }
   }
 
-  const order = await paymentRepository.findByProviderOrderId(providerOrderId);
+  const providerOrderId = payment?.order_id ?? event?.payload?.order?.entity?.id;
+
+  if (!order && providerOrderId) {
+    order = await paymentRepository.findByProviderOrderId(providerOrderId);
+  }
+
   if (!order) {
-    logger.warn({ providerOrderId }, 'Webhook for an unknown order');
+    logger.warn({ eventType, providerOrderId, linkId: link?.id }, 'Webhook for an unknown order');
     return { handled: false, eventType };
   }
 

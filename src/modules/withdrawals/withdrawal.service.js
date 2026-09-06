@@ -36,6 +36,31 @@ export async function requestWithdrawal({ user, coins, payoutMethod, upiId, bank
     throw new BadRequestError(`Minimum withdrawal is ${minCoins} coins`, 'MIN_WITHDRAWAL_NOT_MET');
   }
 
+  /*
+   * The daily ceiling admin configures.
+   *
+   * Counted over a rolling 24 hours rather than since midnight: a calendar-day
+   * reset lets someone withdraw the full cap at 23:59 and again at 00:01, which
+   * is twice the limit inside two minutes. Checked before the debit below, so a
+   * request that breaches the cap never takes the coins.
+   */
+  const dailyCap = earnings.maxWithdrawalCoinsPerDay;
+  if (dailyCap > 0) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const alreadyRequested = await withdrawalRepository.sumCoinsSince(user.id, since);
+    const remaining = Math.max(dailyCap - alreadyRequested, 0);
+
+    if (coins > remaining) {
+      throw new BadRequestError(
+        remaining > 0
+          ? `You can withdraw ${remaining} more coins today. The daily limit is ${dailyCap} coins.`
+          : `You have reached today's withdrawal limit of ${dailyCap} coins. Please try again later.`,
+        'DAILY_WITHDRAWAL_LIMIT_REACHED',
+        { dailyCap, alreadyRequested, remaining },
+      );
+    }
+  }
+
   const coinsPerRupee = earnings.coinsPerRupee || 1;
   const amountInRupees = Number((coins / coinsPerRupee).toFixed(2));
   const amountInPaise = Math.round(amountInRupees * 100);

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { MAX_DISCOVERY_RADIUS_KM } from '#src/common/constants/index.js';
+import { MAX_DISCOVERY_RADIUS_KM, MAX_LANGUAGES_PER_USER, SPOKEN_LANGUAGE_CODES } from '#src/common/constants/index.js';
 import { objectIdSchema, paginationSchema } from '#src/common/validators/common.schema.js';
 
 export const updateProfileSchema = z
@@ -23,6 +23,13 @@ export const updateProfileSchema = z
     ageGroup: z.string().trim().max(30).optional().nullable(),
     zodiacSign: z.string().trim().max(40).optional().nullable(),
     interests: z.array(z.string().trim().min(1).max(30)).max(10).optional(),
+    /* Editable after signup: the languages someone is willing to talk in is
+       exactly the kind of thing that changes once they have used the app. */
+    languages: z
+      .array(z.enum(SPOKEN_LANGUAGE_CODES))
+      .max(MAX_LANGUAGES_PER_USER)
+      .optional()
+      .transform((values) => (values ? [...new Set(values)] : undefined)),
     preferences: z
       .object({
         shareLocation: z.boolean().optional(),
@@ -55,6 +62,19 @@ export const discoverQuerySchema = paginationSchema
       .optional()
       .default('false'),
     search: z.string().trim().min(1).max(30).optional(),
+    /* Comma-separated so it survives a query string, e.g. `?languages=hindi,punjabi`. */
+    languages: z
+      .string()
+      .trim()
+      .optional()
+      .transform((value) => (value ? value.split(',').map((part) => part.trim()).filter(Boolean) : undefined))
+      .pipe(z.array(z.enum(SPOKEN_LANGUAGE_CODES)).max(MAX_LANGUAGES_PER_USER).optional()),
+    /* "People I can talk to" — resolved server-side from the viewer's own list. */
+    matchMyLanguages: z
+      .enum(['true', 'false'])
+      .transform((value) => value === 'true')
+      .optional()
+      .default('false'),
     latitude: z.coerce.number().min(-90).max(90).optional(),
     longitude: z.coerce.number().min(-180).max(180).optional(),
     radiusKm: z.coerce.number().min(1).max(MAX_DISCOVERY_RADIUS_KM).optional(),

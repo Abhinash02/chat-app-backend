@@ -32,3 +32,9 @@ export const postMediaStatusSchema = z.object({
 export const statusIdParamSchema = z.object({ statusId: objectIdSchema });
 
 export const statusAuthorParamSchema = z.object({ userId: objectIdSchema });
+
+/**
+ * The desired state rather than a toggle, so a retried request is idempotent.
+ * Omitted means "flip whatever is stored", which is what a plain tap wants.
+ */
+export const likeStatusSchema = z.object({ like: z.boolean().optional() }).strict();

@@ -4,7 +4,7 @@ import { USER_STATUS } from '#src/common/constants/index.js';
 import { UserModel } from '#src/modules/users/user.model.js';
 
 const PUBLIC_FIELDS =
-  'name nickname gender avatarUrl avatarEmoji avatarColor bio interests isOnline lastSeenAt gamePoints location.city location.country createdAt';
+  'name nickname gender avatarUrl avatarEmoji avatarColor bio interests languages isOnline lastSeenAt gamePoints location.city location.country createdAt';
 
 class UserRepository {
   async create(data, { session } = {}) {
@@ -66,6 +66,7 @@ class UserRepository {
     excludeUserIds = [],
     onlineOnly = false,
     search,
+    languages = [],
     skip = 0,
     limit = 20,
   }) {
@@ -76,6 +77,13 @@ class UserRepository {
     };
 
     if (onlineOnly) filter.isOnline = true;
+    /*
+     * Share at least one language. `$in` on an array field matches when any
+     * element overlaps, which is the rule people expect: someone who speaks
+     * Hindi and Punjabi shows up for a Punjabi speaker without having to be an
+     * exact match on the whole set.
+     */
+    if (languages.length) filter.languages = { $in: languages };
     if (search) {
       const escaped = String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.nickname = { $regex: escaped, $options: 'i' };
@@ -105,6 +113,7 @@ class UserRepository {
     radiusKm,
     excludeUserIds = [],
     onlineOnly = false,
+    languages = [],
     skip = 0,
     limit = 20,
   }) {
@@ -115,6 +124,9 @@ class UserRepository {
       'preferences.shareLocation': true,
     };
     if (onlineOnly) match.isOnline = true;
+    // Nearby obeys the same language rule, so switching to the map view does
+    // not quietly widen who the person is being shown.
+    if (languages.length) match.languages = { $in: languages };
 
     const pipeline = [
       {
@@ -143,6 +155,7 @@ class UserRepository {
                 avatarColor: 1,
                 bio: 1,
                 interests: 1,
+                languages: 1,
                 isOnline: 1,
                 lastSeenAt: 1,
                 gamePoints: 1,

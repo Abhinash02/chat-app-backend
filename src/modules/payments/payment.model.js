@@ -37,6 +37,15 @@ const paymentOrderSchema = new mongoose.Schema(
 
     providerOrderId: { type: String, default: null, index: true },
     providerPaymentId: { type: String, default: null, index: true },
+    /*
+     * Razorpay Payment Link, used by the mobile app.
+     *
+     * Razorpay's standard checkout is a browser SDK with no native equivalent,
+     * so the app opens a hosted link instead. That link is its own entity with
+     * its own id — distinct from `providerOrderId` — and both the webhook and
+     * the verify path need to find this order from it.
+     */
+    providerPaymentLinkId: { type: String, default: null, index: true },
     providerSignature: { type: String, default: null },
 
     manualProof: { type: manualProofSchema, default: () => ({}) },

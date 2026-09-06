@@ -113,6 +113,26 @@ class WalletRepository {
       .exec();
   }
 
+  /**
+   * Starts the next interval without paying anything out.
+   *
+   * The same conditional filter as a claim, so a dismissal can only consume an
+   * interval that was genuinely available — a repeated or replayed request
+   * matches nothing and changes no timestamp.
+   */
+  async skipDailyBonus(userId, { eligibleBefore, now }) {
+    return WalletModel.findOneAndUpdate(
+      {
+        userId,
+        $or: [{ lastDailyBonusAt: null }, { lastDailyBonusAt: { $lte: eligibleBefore } }],
+      },
+      { $set: { lastDailyBonusAt: now } },
+      { new: true },
+    )
+      .lean()
+      .exec();
+  }
+
   async setFreeTalkSeconds(userId, seconds) {
     return WalletModel.findOneAndUpdate(
       { userId },

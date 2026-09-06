@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { DEFAULT_THEME_SLUG } from '#src/modules/theme/theme.constants.js';
 import { themeService } from '#src/modules/theme/theme.service.js';
 import { themeRepository } from '#src/modules/theme/theme.repository.js';
 import { resetDatabase } from '../helpers/factories.js';
@@ -33,7 +34,7 @@ describe('scheduled festival themes', () => {
       scheduledUntil: new Date(Date.now() + 48 * HOUR),
     });
 
-    expect(await activeSlug()).toBe('blush');
+    expect(await activeSlug()).toBe(DEFAULT_THEME_SLUG);
   });
 
   it('should go live by itself once the window has opened', async () => {
@@ -66,7 +67,7 @@ describe('scheduled festival themes', () => {
     });
 
     await themeService.applyScheduledThemes();
-    expect(await activeSlug()).toBe('blush');
+    expect(await activeSlug()).toBe(DEFAULT_THEME_SLUG);
   });
 
   it('should revert to the theme the admin chose, not the default', async () => {
@@ -100,10 +101,10 @@ describe('scheduled festival themes', () => {
     // A run that was booked and missed should stay missed rather than firing
     // late — an admin scheduling last week's festival by mistake must not
     // suddenly repaint the live app.
-    expect(await activeSlug()).toBe('blush');
+    expect(await activeSlug()).toBe(DEFAULT_THEME_SLUG);
 
     await themeService.applyScheduledThemes();
-    expect(await activeSlug()).toBe('blush');
+    expect(await activeSlug()).toBe(DEFAULT_THEME_SLUG);
   });
 
   it('should clear the window once a run has ended, so it fires only once', async () => {
@@ -125,7 +126,7 @@ describe('scheduled festival themes', () => {
     const cleared = await themeRepository.findBySlug('holi');
     expect(cleared.scheduledFrom).toBeNull();
     expect(cleared.isActive).toBe(false);
-    expect(await activeSlug()).toBe('blush');
+    expect(await activeSlug()).toBe(DEFAULT_THEME_SLUG);
   });
 
   it('should reject a window that ends before it starts', async () => {

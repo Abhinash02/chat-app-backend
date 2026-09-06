@@ -28,7 +28,7 @@ function configure() {
 export const cloudinaryStorageProvider = {
   name: 'cloudinary',
 
-  async upload({ buffer, mimeType, folder, fileName }) {
+  async upload({ buffer, mimeType, folder, fileName, maxEdge = 1080, quality = 'auto:good' }) {
     configure();
 
     const publicId = `${fileName}-${crypto.randomBytes(8).toString('hex')}`;
@@ -48,11 +48,19 @@ export const cloudinaryStorageProvider = {
           public_id: publicId,
           resource_type: resourceType,
           overwrite: false,
-          // Only images are resized here. Re-encoding audio would cost quality
-          // for no gain, and video transformation is a paid feature.
+          /*
+           * Only images are resized here. Re-encoding audio would cost quality
+           * for no gain, and video transformation is a paid feature.
+           *
+           * This is an *incoming* transformation: Cloudinary applies it before
+           * storing, so the shrunk file is what occupies the quota rather than
+           * a derived copy sitting alongside a full-size original. Callers can
+           * ask for a tighter box and a harder quality pass — feed photos take
+           * one, chat media keeps the gentler default.
+           */
           ...(isImage
             ? {
-                transformation: [{ width: 1080, height: 1080, crop: 'limit', quality: 'auto:good' }],
+                transformation: [{ width: maxEdge, height: maxEdge, crop: 'limit', quality }],
               }
             : {}),
         },

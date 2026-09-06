@@ -11,6 +11,13 @@ class PaymentRepository {
     return PaymentOrderModel.findById(orderId).lean({ virtuals: true }).exec();
   }
 
+  /** Razorpay Payment Links are their own entity, with their own id. */
+  async findByProviderPaymentLinkId(providerPaymentLinkId) {
+    return PaymentOrderModel.findOne({ providerPaymentLinkId })
+      .lean({ virtuals: true })
+      .exec();
+  }
+
   async findByProviderOrderId(providerOrderId) {
     return PaymentOrderModel.findOne({ providerOrderId }).lean({ virtuals: true }).exec();
   }

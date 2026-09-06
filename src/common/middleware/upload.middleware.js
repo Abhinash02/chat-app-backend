@@ -1,6 +1,7 @@
 import multer from 'multer';
 
 import { BadRequestError } from '#src/common/errors/index.js';
+import { MAX_POST_IMAGES } from '#src/modules/posts/post.constants.js';
 
 /**
  * Limits are per kind, because the cost of each is wildly different.
@@ -47,10 +48,15 @@ const ALLOWED_VIDEO_MIME_TYPES = new Set([
   'video/3gpp',
 ]);
 
-function buildUploader({ allowed, maxBytes, description }) {
+function buildUploader({ allowed, maxBytes, description, maxFiles = 1 }) {
   return multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: maxBytes, files: 1 },
+    /*
+     * `files` is a hard stop, not a suggestion. Without it a client could post
+     * a thousand parts in one request and every one would be buffered in
+     * memory before any handler saw it.
+     */
+    limits: { fileSize: maxBytes, files: maxFiles },
     fileFilter: (_req, file, cb) => {
       // The declared type is only a first filter; the storage layer derives the
       // real extension from this same allow-list rather than the filename.
@@ -93,6 +99,20 @@ export const uploadMedia = buildUploader({
   ]),
   maxBytes: MAX_VIDEO_BYTES,
   description: 'That file type is not supported',
+});
+
+/**
+ * A photo post: several images in one request.
+ *
+ * Separate from `uploadImage` so the per-file ceiling stays the image limit
+ * while the count is raised — sharing the single-file uploader would have
+ * meant either one image per post or a video-sized budget per picture.
+ */
+export const uploadPostImages = buildUploader({
+  allowed: ALLOWED_IMAGE_MIME_TYPES,
+  maxBytes: MAX_IMAGE_BYTES,
+  maxFiles: MAX_POST_IMAGES,
+  description: 'Only JPEG, PNG or WebP images are allowed',
 });
 
 export function mediaKindOf(mimeType) {

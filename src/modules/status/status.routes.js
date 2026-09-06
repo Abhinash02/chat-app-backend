@@ -7,6 +7,7 @@ import {
   postTextStatusSchema,
   statusAuthorParamSchema,
   statusIdParamSchema,
+  likeStatusSchema,
 } from '#src/modules/status/status.schema.js';
 
 const router = Router();
@@ -26,6 +27,11 @@ router.post(
 
 router.get('/user/:userId', validate({ params: statusAuthorParamSchema }), statusController.listByUser);
 router.post('/:statusId/view', validate({ params: statusIdParamSchema }), statusController.markViewed);
+router.post(
+  '/:statusId/like',
+  validate({ params: statusIdParamSchema, body: likeStatusSchema }),
+  statusController.like,
+);
 router.get('/:statusId/viewers', validate({ params: statusIdParamSchema }), statusController.listViewers);
 router.delete('/:statusId', validate({ params: statusIdParamSchema }), statusController.remove);
 

@@ -198,6 +198,171 @@ const OCEAN = {
   freeTalkBadge: '#0EA5E9',
 };
 
+/**
+ * The house look: one dominant cyan carrying every primary action, the way
+ * WhatsApp leans on a single green and Instagram on one gradient. Secondary
+ * and gradient values stay inside the same hue family so a screen reads as one
+ * brand with depth rather than two brands sharing a surface.
+ */
+const AQUA = {
+  primary: '#06B6D4',
+  primaryDark: '#0891B2',
+  primaryLight: '#67E8F9',
+  onPrimary: '#FFFFFF',
+  secondary: '#0E7490',
+  accent: '#22D3EE',
+  background: '#F6FDFE',
+  surface: '#FFFFFF',
+  surfaceAlt: '#ECFAFC',
+  border: '#D7EEF3',
+  textPrimary: '#0B2027',
+  textSecondary: '#41616B',
+  textMuted: '#8AA5AD',
+  success: '#1FBF75',
+  warning: '#F5A524',
+  danger: '#F5325B',
+  info: '#3B82F6',
+  gradientStart: '#06B6D4',
+  gradientEnd: '#0E7490',
+  maleAccent: '#0EA5E9',
+  femaleAccent: '#F472B6',
+  onlineDot: '#22C55E',
+  offlineDot: '#B4C6CC',
+  coinGold: '#FFB020',
+  chatBubbleIncoming: '#FFFFFF',
+  chatBubbleIncomingText: '#0B2027',
+  chatBubbleOutgoing: '#06B6D4',
+  chatBubbleOutgoingText: '#FFFFFF',
+  tabBarBackground: '#FFFFFF',
+  tabBarActive: '#06B6D4',
+  tabBarInactive: '#8AA5AD',
+  cardBackground: '#FFFFFF',
+  inputBackground: '#F2FBFC',
+  inputBorder: '#D7EEF3',
+  vipGold: '#FFD700',
+  freeTalkBadge: '#06B6D4',
+};
+
+/**
+ * Deep violet, built from the pair on the marketing banner: #5B20D3 carries
+ * the actions and #4519A2 anchors the gradient. Same single-hue discipline as
+ * Aqua — the accent is a lighter tint of the same violet rather than a second
+ * competing colour, so a screen still reads as one brand.
+ */
+const VIOLET = {
+  primary: '#5B20D3',
+  primaryDark: '#4519A2',
+  primaryLight: '#A78BFA',
+  onPrimary: '#FFFFFF',
+  secondary: '#4519A2',
+  accent: '#8B5CF6',
+  background: '#F8F6FE',
+  surface: '#FFFFFF',
+  surfaceAlt: '#F1ECFD',
+  border: '#E0D6F8',
+  textPrimary: '#190E33',
+  textSecondary: '#4A3D68',
+  textMuted: '#8C82A6',
+  success: '#1FBF75',
+  warning: '#F5A524',
+  danger: '#F5325B',
+  info: '#3B82F6',
+  gradientStart: '#5B20D3',
+  gradientEnd: '#4519A2',
+  maleAccent: '#3B82F6',
+  femaleAccent: '#EC4899',
+  onlineDot: '#22C55E',
+  offlineDot: '#B6AECB',
+  coinGold: '#FFB020',
+  chatBubbleIncoming: '#FFFFFF',
+  chatBubbleIncomingText: '#190E33',
+  chatBubbleOutgoing: '#5B20D3',
+  chatBubbleOutgoingText: '#FFFFFF',
+  tabBarBackground: '#FFFFFF',
+  tabBarActive: '#5B20D3',
+  tabBarInactive: '#8C82A6',
+  cardBackground: '#FFFFFF',
+  inputBackground: '#F5F1FE',
+  inputBorder: '#E0D6F8',
+  vipGold: '#FFD700',
+  freeTalkBadge: '#5B20D3',
+};
+
+/**
+ * The house look: one muted dusty-rose accent and a set of neutrals.
+ *
+ * Deliberately not a multi-hue palette. Colour does almost no work here —
+ * hierarchy comes from typography, spacing and photography, and the accent is
+ * saved for the handful of moments that matter: a like, an active tab, the one
+ * primary action on a screen. `gradientStart` and `gradientEnd` are both the
+ * accent, so anything still reading them paints flat.
+ */
+const EDITORIAL_LIGHT = {
+  primary: '#C96F7D',
+  primaryDark: '#A9576A',
+  primaryLight: '#E3A3AC',
+  onPrimary: '#FFFFFF',
+  secondary: '#C96F7D',
+  accent: '#C96F7D',
+  background: '#FAF9F7',
+  surface: '#FFFFFF',
+  surfaceAlt: '#F2F0EC',
+  border: '#E6E2DC',
+  textPrimary: '#111111',
+  textSecondary: '#4A4643',
+  textMuted: '#8C8880',
+  success: '#5C7F62',
+  warning: '#B08243',
+  danger: '#B4534E',
+  info: '#4A4643',
+  gradientStart: '#C96F7D',
+  gradientEnd: '#C96F7D',
+  maleAccent: '#8C8880',
+  femaleAccent: '#8C8880',
+  onlineDot: '#C96F7D',
+  offlineDot: '#C9C4BC',
+  coinGold: '#B08243',
+  chatBubbleIncoming: '#F2F0EC',
+  chatBubbleIncomingText: '#111111',
+  chatBubbleOutgoing: '#C96F7D',
+  chatBubbleOutgoingText: '#FFFFFF',
+  tabBarBackground: '#FFFFFF',
+  tabBarActive: '#C96F7D',
+  tabBarInactive: '#8C8880',
+  cardBackground: '#FFFFFF',
+  inputBackground: '#FFFFFF',
+  inputBorder: '#E6E2DC',
+  vipGold: '#B08243',
+  freeTalkBadge: '#C96F7D',
+};
+
+/**
+ * The same identity after dark.
+ *
+ * The accent is unchanged — that is the point of having one. Only the neutrals
+ * invert, and they invert to a warm near-black rather than pure black or a
+ * blue-grey, so the interface stays soft rather than turning severe.
+ */
+const EDITORIAL_DARK = {
+  ...EDITORIAL_LIGHT,
+  background: '#111111',
+  surface: '#191817',
+  surfaceAlt: '#222120',
+  border: '#2E2C2A',
+  textPrimary: '#F7F5F2',
+  textSecondary: '#C4C0BA',
+  textMuted: '#8A8680',
+  offlineDot: '#4A4643',
+  chatBubbleIncoming: '#222120',
+  chatBubbleIncomingText: '#F7F5F2',
+  tabBarBackground: '#191817',
+  tabBarInactive: '#8A8680',
+  cardBackground: '#191817',
+  inputBackground: '#191817',
+  inputBorder: '#2E2C2A',
+  info: '#C4C0BA',
+};
+
 const CYBERPUNK = {
   primary: '#D946EF',
   primaryDark: '#A21CAF',
@@ -638,7 +803,11 @@ const FESTIVAL_PRESETS = [
 
 /** Seeded on first boot; an admin activates one of these with a single click. */
 export const THEME_PRESETS = Object.freeze([
-  { slug: 'blush', name: 'Blush', description: 'Warm pink and violet — the default look.', colors: BLUSH, isDark: false },
+  { slug: 'editorial', name: 'Editorial Light', description: 'One dusty-rose accent on warm white.', colors: EDITORIAL_LIGHT, isDark: false },
+  { slug: 'editorial-dark', name: 'Editorial Dark', description: 'The same accent on warm near-black.', colors: EDITORIAL_DARK, isDark: true },
+  { slug: 'aqua', name: 'Aqua', description: 'One dominant cyan.', colors: AQUA, isDark: false },
+  { slug: 'violet', name: 'Violet', description: 'Deep violet and indigo, one bold hue.', colors: VIOLET, isDark: false },
+  { slug: 'blush', name: 'Blush', description: 'Warm pink and violet.', colors: BLUSH, isDark: false },
   { slug: 'midnight', name: 'Midnight', description: 'Deep violet dark mode.', colors: MIDNIGHT, isDark: true },
   { slug: 'sunset', name: 'Sunset', description: 'Orange and amber, high energy.', colors: SUNSET, isDark: false },
   { slug: 'ocean', name: 'Ocean', description: 'Cool blue and teal, calm and clean.', colors: OCEAN, isDark: false },
@@ -651,7 +820,7 @@ export const THEME_PRESETS = Object.freeze([
   ...FESTIVAL_PRESETS,
 ]);
 
-export const DEFAULT_THEME_SLUG = 'blush';
+export const DEFAULT_THEME_SLUG = 'editorial';
 export const DEFAULT_THEME_COLORS = BLUSH;
 
 export const DEFAULT_BRANDING = Object.freeze({

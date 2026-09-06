@@ -48,6 +48,20 @@ const statusSchema = new mongoose.Schema(
     viewCount: { type: Number, default: 0, min: 0 },
 
     /**
+     * Who liked this, the same way WhatsApp lets anyone react to a status.
+     *
+     * Ids inline, alongside a counter written in the same update, for the same
+     * reason the viewer list is inline: a status lives twenty-four hours and is
+     * seen by tens of people, so this is one read rather than a join, and it
+     * disappears with its parent when the TTL fires.
+     *
+     * Unlike `viewers`, the count here is public — a like is something you do
+     * on purpose and expect the author to see, where a view is not.
+     */
+    likedBy: { type: [mongoose.Schema.Types.ObjectId], ref: 'User', default: [] },
+    likeCount: { type: Number, default: 0, min: 0 },
+
+    /**
      * When this disappears. Written explicitly rather than derived from
      * `createdAt`, so the lifetime is visible in the document and a future
      * change to the TTL cannot silently re-date everything already posted.
