@@ -26,3 +26,4 @@ import '#src/modules/notifications/campaign.model.js';
 import '#src/modules/notifications/email-template.model.js';
 import '#src/modules/notifications/in-app-notification.model.js';
 import '#src/modules/admin/admin-audit.model.js';
+import '#src/modules/account-deletion/deletion.model.js';

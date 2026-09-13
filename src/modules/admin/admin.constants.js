@@ -3,6 +3,8 @@ export const ADMIN_ACTION = Object.freeze({
   USER_SUSPENDED: 'user.suspended',
   USER_REACTIVATED: 'user.reactivated',
   USER_DELETED: 'user.deleted',
+  DELETION_REQUEST_APPROVED: 'deletion_request.approved',
+  DELETION_REQUEST_REJECTED: 'deletion_request.rejected',
   USER_FORCE_LOGGED_OUT: 'user.force_logged_out',
   COINS_ADJUSTED: 'coins.adjusted',
   FREE_TALK_RESET: 'coins.free_talk_reset',

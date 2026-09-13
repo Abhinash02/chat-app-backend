@@ -8,6 +8,8 @@ import { emitToAll, emitToUser } from '#src/realtime/emitter.js';
 import { SOCKET_EVENT } from '#src/realtime/events.js';
 import { notificationService } from '#src/modules/notifications/notification.service.js';
 import { settingsService } from '#src/modules/settings/settings.service.js';
+import { accountDeletionService } from '#src/modules/account-deletion/deletion.service.js';
+import { DELETION_REASON } from '#src/modules/account-deletion/deletion.constants.js';
 import { userRepository } from '#src/modules/users/user.repository.js';
 import { oppositeGenderOf } from '#src/modules/users/user.types.js';
 import { UserModel } from '#src/modules/users/user.model.js';
@@ -446,24 +448,27 @@ export async function unfollowUser({ userId, targetUserId }) {
   return { isFollowing: false, followersCount, followingCount };
 }
 
-export async function deleteMyAccount(userId) {
-  const updated = await userRepository.updateById(userId, {
-    $set: {
-      status: USER_STATUS.INACTIVE,
-      isOnline: false,
-      activeConnections: 0,
-      tokensValidFrom: new Date(),
-    },
+/**
+ * Deleting an account is a request now, not an act.
+ *
+ * It goes to an administrator and only becomes a deletion once they approve it,
+ * so this opens the request rather than closing the account. Leaving the old
+ * immediate path here would have been a way around that review entirely — the
+ * endpoint is still reachable by any build of the app already on a phone.
+ *
+ * It also retires a bug that made the old code silently do nothing: it set
+ * `USER_STATUS.INACTIVE`, which is not one of the four values that enum
+ * defines, so `status` was written as `undefined` and the account stayed open.
+ *
+ * Older clients send no body. They get the same review flow with the reason
+ * recorded as unspecified, rather than an error they have no way to handle.
+ */
+export async function deleteMyAccount(userId, { reason, reasonDetail } = {}) {
+  return accountDeletionService.requestDeletion({
+    userId,
+    reason: reason ?? DELETION_REASON.OTHER,
+    reasonDetail: reasonDetail ?? 'Submitted from an older version of the app.',
   });
-  if (!updated) throw new NotFoundError('Account not found', 'USER_NOT_FOUND');
-
-  emitToAll(SOCKET_EVENT.PRESENCE_UPDATED, {
-    userId: String(userId),
-    isOnline: false,
-    lastSeenAt: new Date(),
-  });
-
-  return { success: true };
 }
 
 export async function listFollowers(userId) {

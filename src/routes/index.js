@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { isDatabaseHealthy } from '#src/config/database.js';
 import { sendSuccess } from '#src/common/utils/response.util.js';
+import { accountDeletionRoutes } from '#src/modules/account-deletion/index.js';
 import { adminRoutes } from '#src/modules/admin/index.js';
 import { authRoutes } from '#src/modules/auth/index.js';
 import { bannerRoutes } from '#src/modules/banners/index.js';
@@ -62,6 +63,7 @@ router.use('/support', supportRoutes);
 router.use('/withdrawals', withdrawalRoutes);
 router.use('/system-logs', systemLogRoutes);
 router.use('/admin', adminRoutes);
+router.use('/account-deletion', accountDeletionRoutes);
 router.use('/referrals', referralRoutes);
 
 export const apiRoutes = router;
