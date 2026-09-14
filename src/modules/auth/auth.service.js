@@ -336,8 +336,10 @@ export async function login({ email, password, userAgent, ipAddress }) {
     });
   }
 
-  await coinsService.ensureWallet({ userId: user._id, gender: user.gender });
-  await userRepository.updateById(user._id, { $set: { lastLoginAt: new Date() } });
+  await Promise.all([
+    coinsService.ensureWallet({ userId: user._id, gender: user.gender }),
+    userRepository.updateById(user._id, { $set: { lastLoginAt: new Date() } }),
+  ]);
 
   const tokens = await issueSession({ user, userAgent, ipAddress });
   return { user: toAuthUser(user), tokens };
