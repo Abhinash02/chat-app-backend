@@ -3,7 +3,21 @@ import { z } from 'zod';
 import { objectIdSchema, paginationSchema } from '#src/common/validators/common.schema.js';
 import { PAYMENT_STATUS } from '#src/modules/payments/payment.constants.js';
 
-export const createOrderSchema = z.object({ packageId: objectIdSchema }).strict();
+/**
+ * `returnUrl` is where a redirect-based gateway sends the buyer afterwards.
+ *
+ * The browser client has to supply it — Stripe and Cashfree leave the page
+ * entirely, and the default built into each gateway points back at this API,
+ * not at whichever front end started the purchase. The service checks the origin
+ * against `CORS_ORIGINS` before handing it to a provider, so this field cannot
+ * be used to bounce somebody off to an attacker's site.
+ */
+export const createOrderSchema = z
+  .object({
+    packageId: objectIdSchema,
+    returnUrl: z.string().trim().url().max(500).optional(),
+  })
+  .strict();
 
 export const verifyPaymentSchema = z
   .object({

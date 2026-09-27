@@ -19,6 +19,18 @@ const envSchema = z.object({
    */
   PUBLIC_API_URL: z.string().optional().default(''),
 
+  /**
+   * Where a card gateway's redirect sends the buyer when the client named no
+   * return URL of its own — which is every purchase started in the mobile app,
+   * since it cannot receive a browser redirect.
+   *
+   * It used to be `http://localhost:8081` hardcoded in the payments controller:
+   * the Expo dev server. In production that is a dead address, so paying by
+   * Cashfree redirect ended on a browser error page while the webhook quietly
+   * credited the coins. The app's deep link is the correct default.
+   */
+  PAYMENT_RETURN_URL: z.string().default('vibe://coins'),
+
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),

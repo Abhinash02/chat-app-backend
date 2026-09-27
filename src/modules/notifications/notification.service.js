@@ -205,16 +205,48 @@ export async function broadcastInAppNotification({
           : targetAudience === 'girls'
             ? { gender: 'female' }
             : {};
-      const users = await userRepository.findAudience({
+      /*
+       * This used to call `userRepository.findAudience(...)`, which does not
+       * exist on that repository — so every broadcast threw a TypeError that
+       * the catch below swallowed as a warning, and no push was ever sent.
+       * The in-app row and the socket event both succeeded, so the admin panel
+       * showed a delivered broadcast either way.
+       *
+       * Batched by `_id` cursor rather than loaded in one go: the audience is
+       * the whole user base, and materialising it as one array is the pattern
+       * campaigns already avoid.
+       */
+      const audience = {
         ...audienceFilter,
         status: 'active',
         'preferences.pushEnabled': { $ne: false },
-      });
-      const userIds = (users || []).map((u) => u._id);
-      if (userIds.length > 0) {
-        const devices = await notificationRepository.findActiveTokensForUsers(userIds);
+      };
+
+      const BATCH_SIZE = 500;
+      // A broadcast runs inline, so it is bounded rather than open-ended; a
+      // genuinely large send belongs to the campaign worker.
+      const MAX_BATCHES = 200;
+
+      const provider = getPushProvider();
+      let afterUserId = null;
+
+      for (let batch = 0; batch < MAX_BATCHES; batch += 1) {
+        const users = await notificationRepository.findAudienceBatch({
+          filter: audience,
+          afterUserId,
+          limit: BATCH_SIZE,
+        });
+
+        if (users.length === 0) break;
+        afterUserId = users[users.length - 1]._id;
+
+        const devices = await notificationRepository.findActiveTokensForUsers(
+          users.map((user) => user._id),
+        );
+
         if (devices.length > 0) {
-          const provider = getPushProvider();
+          // Not awaited: a slow push provider must not hold up the next batch
+          // or the admin's request.
           provider
             .send(
               devices.map((device) => ({
@@ -231,6 +263,8 @@ export async function broadcastInAppNotification({
             )
             .catch((pushErr) => logger.warn({ err: pushErr }, 'Broadcast push sending error'));
         }
+
+        if (users.length < BATCH_SIZE) break;
       }
     } catch (pushErr) {
       logger.warn({ err: pushErr }, 'Failed to trigger broadcast push');

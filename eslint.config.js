@@ -21,6 +21,8 @@ export default [
         // Node 20 globals used by the push provider.
         fetch: 'readonly',
         AbortSignal: 'readonly',
+        // Payments parse client-supplied return URLs against an allowlist.
+        URL: 'readonly',
       },
     },
     rules: {

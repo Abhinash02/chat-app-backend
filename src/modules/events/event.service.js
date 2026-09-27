@@ -16,6 +16,7 @@ function toEventDto(event) {
     description: event.description,
     type: event.type,
     badgeText: event.badgeText,
+    visibility: event.visibility || 'both',
     bannerUrl: event.bannerUrl,
     targetGender: event.targetGender,
     rewardCoins: event.rewardCoins || 0,
@@ -107,6 +108,7 @@ export async function broadcastEvent({ event, sendPush = true, sendEmail = true 
       title: `🎉 ${event.title}`,
       description: event.description,
       badgeText: event.badgeText,
+    visibility: event.visibility || 'both',
       rewardCoins: event.rewardCoins || 0,
       discountPercent: event.discountPercent || 0,
       actionUrl: event.actionUrl || 'coins',
@@ -125,6 +127,7 @@ export async function createEvent({
   type,
   badgeText,
   bannerUrl,
+  visibility,
   targetGender,
   rewardCoins,
   rewardFreeMinutes,
@@ -147,6 +150,7 @@ export async function createEvent({
     type: type || 'offer',
     badgeText: badgeText || 'HOT',
     bannerUrl: bannerUrl || null,
+    visibility: visibility || 'both',
     targetGender: targetGender || 'all',
     rewardCoins: Number(rewardCoins) || 0,
     rewardFreeMinutes: Number(rewardFreeMinutes) || 0,
@@ -159,13 +163,14 @@ export async function createEvent({
   });
 
   const dto = toEventDto(event);
+  const reachesApp = dto.visibility !== 'website';
 
-  // Broadcast live event socket
-  emitToAll('event:new', dto);
+  if (reachesApp) {
+    emitToAll('event:new', dto);
 
-  // Send push notification & email if requested
-  if (sendPush || sendEmail) {
-    broadcastEvent({ event, sendPush, sendEmail }).catch(() => undefined);
+    if (sendPush || sendEmail) {
+      broadcastEvent({ event, sendPush, sendEmail }).catch(() => undefined);
+    }
   }
 
   return dto;
@@ -182,6 +187,9 @@ export async function listPublicEvents({ userGender }) {
   if (userGender) {
     query.targetGender = { $in: ['all', userGender] };
   }
+
+  // Website-only posts never appear in the app.
+  query.visibility = { $in: ['app', 'both'] };
 
   const events = await EventModel.find(query).sort({ startsAt: -1 }).limit(20);
   return events.map(toEventDto);

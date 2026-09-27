@@ -169,6 +169,19 @@ class SupportService {
       throw new NotFoundError('Support ticket not found.');
     }
 
+    /*
+     * A ticket belongs to the person who opened it.
+     *
+     * `getTicketDetails` has always checked this, but the write path did not:
+     * knowing a ticket id was enough to post into a stranger's conversation,
+     * and it would appear to them as part of their own support thread. Admins
+     * are exempt because replying to other people's tickets is their job — the
+     * controller derives `senderType` from the role, never from the client.
+     */
+    if (senderType !== 'admin' && String(ticket.userId?._id ?? ticket.userId) !== String(senderId)) {
+      throw new ForbiddenError('You do not have access to this support ticket.');
+    }
+
     // Status Workflow Transitions: pending -> open -> in_progress
     if (senderType === 'user' && (ticket.status === 'resolved' || ticket.status === 'closed')) {
       ticket.status = 'open';

@@ -19,7 +19,8 @@
     "seed": "node src/database/seeders/index.js",
     "sync-indexes": "node scripts/sync-indexes.js",
     "db": "node scripts/dev-db.js",
-    "seed:demo": "node scripts/seed-demo.js"
+    "seed:demo": "node scripts/seed-demo.js",
+    "seed:site": "node scripts/seed-site-content.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

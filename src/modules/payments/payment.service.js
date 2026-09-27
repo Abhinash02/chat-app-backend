@@ -24,6 +24,52 @@ import { notificationService } from '#src/modules/notifications/notification.ser
 import { generateAndSaveOrderInvoicePdf } from '#src/modules/payments/invoice-pdf.service.js';
 import { emailService } from '#src/integrations/email/email.service.js';
 
+/**
+ * Accepts a client-supplied return URL only if it points at a front end we know.
+ *
+ * A payment provider will redirect the buyer to whatever URL we hand it, so an
+ * unchecked value here is an open redirect wearing a checkout as a disguise —
+ * and a convincing one, because the buyer arrives from Stripe or Cashfree rather
+ * than from us. `CORS_ORIGINS` is already the list of front ends allowed to talk
+ * to this API, so it is the right allowlist. Anything else is dropped and the
+ * gateway's own default applies.
+ */
+function resolveReturnUrl(requested) {
+  if (!requested) return undefined;
+
+  let parsed;
+  try {
+    parsed = new URL(requested);
+  } catch {
+    return undefined;
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return undefined;
+  if (!env.corsOrigins.includes(parsed.origin)) {
+    logger.warn({ origin: parsed.origin }, 'Rejected an off-origin payment return URL');
+    return undefined;
+  }
+
+  return parsed.toString();
+}
+
+/**
+ * Stamps the order onto a front end's return URL.
+ *
+ * The client cannot do this itself — the order does not exist until this service
+ * creates it — and the verify endpoints identify a purchase by our order id, not
+ * by the provider's session. Stripe also appends `&session_id=...` to whatever it
+ * is given, so a query string has to be there already.
+ */
+function withOrderContext(returnUrl, { orderId, provider }) {
+  if (!returnUrl) return undefined;
+
+  const url = new URL(returnUrl);
+  url.searchParams.set('order_id', String(orderId));
+  url.searchParams.set('provider', provider);
+  return url.toString();
+}
+
 function toOrderDto(order) {
   return {
     id: String(order._id),
@@ -503,6 +549,7 @@ export async function createCashfreeOrder({ user, packageId, returnUrl }) {
   }
 
   const snapshot = await snapshotPackage(packageId);
+  const safeReturnUrl = resolveReturnUrl(returnUrl);
 
   const order = await paymentRepository.create({
     userId: user.id,
@@ -521,7 +568,10 @@ export async function createCashfreeOrder({ user, packageId, returnUrl }) {
         email: user.email,
         name: user.name || user.nickname,
       },
-      returnUrl,
+      returnUrl: withOrderContext(safeReturnUrl, {
+        orderId: order._id,
+        provider: PAYMENT_PROVIDER.CASHFREE,
+      }),
       orderNote: `${snapshot.packageName} (${snapshot.coins + snapshot.bonusCoins} Coins)`,
     });
 
@@ -695,6 +745,7 @@ export async function createStripeOrder({ user, packageId, returnUrl }) {
   }
 
   const snapshot = await snapshotPackage(packageId);
+  const safeReturnUrl = resolveReturnUrl(returnUrl);
 
   if (snapshot.amountInPaise < 4500) {
     throw new BadRequestError(
@@ -718,7 +769,10 @@ export async function createStripeOrder({ user, packageId, returnUrl }) {
       orderId: String(order._id),
       packageName: `${snapshot.packageName} (${snapshot.coins + snapshot.bonusCoins} Coins)`,
       userEmail: user.email,
-      returnUrl,
+      returnUrl: withOrderContext(safeReturnUrl, {
+        orderId: order._id,
+        provider: PAYMENT_PROVIDER.STRIPE,
+      }),
     });
 
     const updated = await paymentRepository.updateById(order._id, {
@@ -789,6 +843,53 @@ export async function verifyStripePayment({ user, orderId }) {
 
   const fresh = await paymentRepository.findById(order._id);
   return { order: toOrderDto(fresh), wallet: null, alreadyCredited: true, status: 'paid' };
+}
+
+/**
+ * Stripe's landing page after checkout, for a buyer with no session on this API.
+ *
+ * `createCheckoutSession` has always pointed its `success_url` here when the
+ * client gave no return URL of its own, but the route did not exist — so paying
+ * by card ended on a 404. The webhook credited the order regardless, which is
+ * the only reason this was survivable rather than a lost payment.
+ *
+ * Unauthenticated by necessity: the buyer arrives as a fresh navigation from
+ * Stripe with no Authorization header. It reveals nothing and changes nothing
+ * that the webhook would not have done anyway — it reads one order id and asks
+ * Stripe whether that session was paid.
+ */
+export async function handleStripeReturn({ orderId }) {
+  if (!orderId) return { status: 'unknown', order: null };
+
+  const order = await paymentRepository.findById(orderId);
+  if (!order) return { status: 'unknown', order: null };
+
+  if (order.creditedAt) return { status: 'already_paid', order: toOrderDto(order) };
+
+  const sessionId = order.metadata?.stripeSessionId || order.providerOrderId;
+  if (!sessionId) return { status: order.status, order: toOrderDto(order) };
+
+  try {
+    const session = await stripeGateway.retrieveSession(sessionId);
+
+    if (session.payment_status === 'paid') {
+      const paid = await paymentRepository.markPaidOnce({
+        orderId: order._id,
+        providerPaymentId: session.payment_intent ? String(session.payment_intent) : sessionId,
+        providerSignature: String(session.id),
+      });
+
+      if (paid) {
+        await creditOrder(paid);
+        return { status: 'paid', order: toOrderDto(paid) };
+      }
+    }
+  } catch (err) {
+    logger.error({ err, orderId }, 'Failed to verify Stripe return');
+  }
+
+  const current = await paymentRepository.findById(order._id);
+  return { status: current.status, order: toOrderDto(current) };
 }
 
 export async function getOrderInvoiceHtml({ user, orderId }) {
@@ -1509,6 +1610,7 @@ export const paymentService = {
   handleCashfreeReturn,
   createStripeOrder,
   verifyStripePayment,
+  handleStripeReturn,
   createRazorpayOrder,
   verifyRazorpayPayment,
   handleRazorpayWebhook,

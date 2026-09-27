@@ -1,6 +1,26 @@
 import { asyncHandler } from '#src/common/utils/async-handler.util.js';
 import { sendCreated, sendSuccess } from '#src/common/utils/response.util.js';
+import { env } from '#src/config/env.js';
 import { paymentService } from '#src/modules/payments/payment.service.js';
+
+/**
+ * Where to send a buyer coming back from a gateway's own redirect.
+ *
+ * Only reached when the client gave no return URL, so the target is
+ * `PAYMENT_RETURN_URL` — the app's deep link by default. The outcome rides along
+ * as query parameters, which is what the coins screen reads to decide between a
+ * celebration and an apology. A deep link already carrying a query string gets
+ * `&`, not a second `?`.
+ */
+function buildReturnRedirect({ result, orderId, cancelled = false }) {
+  const paid = result?.status === 'paid' || result?.status === 'already_paid';
+  const outcome = cancelled ? 'failed' : paid ? 'success' : 'pending';
+
+  const base = env.PAYMENT_RETURN_URL;
+  const separator = base.includes('?') ? '&' : '?';
+
+  return `${base}${separator}payment=${outcome}&order_id=${encodeURIComponent(orderId ?? '')}`;
+}
 
 export const paymentController = {
   getOptions: asyncHandler(async (_req, res) => {
@@ -30,11 +50,17 @@ export const paymentController = {
   handleCashfreeReturn: asyncHandler(async (req, res) => {
     const orderId = req.query.order_id || req.query.orderId;
     const result = await paymentService.handleCashfreeReturn({ orderId });
+    return res.redirect(buildReturnRedirect({ result, orderId }));
+  }),
 
-    const isPaid = result.status === 'paid' || result.status === 'already_paid';
-    // Redirect to mobile app coins page with payment outcome
-    const targetUrl = `http://localhost:8081/coins?payment=${isPaid ? 'success' : 'pending'}&order_id=${orderId || ''}`;
-    return res.redirect(targetUrl);
+  /* The twin of the above. Stripe's `success_url` has always pointed here; until
+     now nothing answered, so a paid card landed on a 404. */
+  handleStripeReturn: asyncHandler(async (req, res) => {
+    const orderId = req.query.order_id || req.query.orderId;
+    const result = await paymentService.handleStripeReturn({ orderId });
+    return res.redirect(
+      buildReturnRedirect({ result, orderId, cancelled: req.query.cancelled === 'true' }),
+    );
   }),
 
   createStripeOrder: asyncHandler(async (req, res) => {

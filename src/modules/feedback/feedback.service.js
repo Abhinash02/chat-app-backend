@@ -3,6 +3,7 @@ import { BadRequestError, NotFoundError } from '#src/common/errors/index.js';
 import { UserModel } from '#src/modules/users/user.model.js';
 import { notificationService } from '#src/modules/notifications/notification.service.js';
 import { emailService } from '#src/integrations/email/email.service.js';
+import { settingsService } from '#src/modules/settings/settings.service.js';
 import { emitToAdmin, emitToUser } from '#src/realtime/emitter.js';
 import { SOCKET_EVENT } from '#src/realtime/events.js';
 import { logger } from '#src/config/logger.js';
@@ -23,6 +24,21 @@ export async function submitFeedback({ userId, category, rating, message, device
   const totalNew = await FeedbackModel.countDocuments({ status: 'new' });
   emitToAdmin(SOCKET_EVENT.ADMIN_FEEDBACK_NEW, { feedbackId: String(feedback._id), totalNew });
 
+  /*
+   * Email the support address as well as the socket.
+   *
+   * The socket only reaches an admin who happens to have the panel open. Most
+   * feedback arrives when nobody is looking at it, and website feedback comes
+   * from visitors with no account — so the only way to answer them is the
+   * address they left, and the only way anyone learns it exists is this mail.
+   *
+   * Fire and forget: somebody's feedback must not fail to save because SMTP is
+   * having a bad afternoon.
+   */
+  notifyAdminsOfFeedback(feedback).catch((error) =>
+    logger.warn({ err: error }, 'Failed to email admins about new feedback'),
+  );
+
   return {
     id: String(feedback._id),
     category: feedback.category,
@@ -30,6 +46,57 @@ export async function submitFeedback({ userId, category, rating, message, device
     status: feedback.status,
     createdAt: feedback.createdAt,
   };
+}
+
+/** Builds and sends the "new feedback" mail. Separate so the caller stays readable. */
+async function notifyAdminsOfFeedback(feedback) {
+  const settings = await settingsService.getSettings();
+  const to = settings?.payments?.supportEmail;
+  if (!to) return;
+
+  // Website submissions carry the visitor's address in `deviceInfo`, because a
+  // visitor has no account to reply through.
+  const source = feedback.deviceInfo || 'App';
+  const reference = String(feedback._id).slice(-6).toUpperCase();
+
+  let author = 'Anonymous';
+  if (feedback.userId) {
+    const user = await UserModel.findById(feedback.userId).select('nickname name email').lean();
+    if (user) author = `${user.nickname || user.name || 'User'} (${user.email})`;
+  }
+
+  const subject = `New ${feedback.category} feedback (#${reference}) — ${feedback.rating}★`;
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1e293b;">
+      <h2 style="color: #6366f1; margin-bottom: 4px;">New feedback</h2>
+      <p style="margin: 0 0 18px 0; color: #64748b; font-size: 13px;">Reference #${reference}</p>
+
+      <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+        <tr><td style="padding: 6px 0; color: #64748b;">Category</td><td style="padding: 6px 0;"><strong>${feedback.category}</strong></td></tr>
+        <tr><td style="padding: 6px 0; color: #64748b;">Rating</td><td style="padding: 6px 0;"><strong>${feedback.rating} / 5</strong></td></tr>
+        <tr><td style="padding: 6px 0; color: #64748b;">From</td><td style="padding: 6px 0;"><strong>${author}</strong></td></tr>
+        <tr><td style="padding: 6px 0; color: #64748b;">Source</td><td style="padding: 6px 0;">${source}</td></tr>
+      </table>
+
+      <div style="background-color: #f8fafc; border-left: 4px solid #6366f1; padding: 14px; margin: 18px 0; border-radius: 4px;">
+        <p style="margin: 0; white-space: pre-line; color: #334155;">${feedback.message}</p>
+      </div>
+
+      <p style="color: #64748b; font-size: 13px;">Reply and update the status in the admin panel under Feedback.</p>
+    </div>
+  `;
+
+  const text = [
+    `New ${feedback.category} feedback (#${reference})`,
+    `Rating: ${feedback.rating}/5`,
+    `From: ${author}`,
+    `Source: ${source}`,
+    '',
+    feedback.message,
+  ].join('\n');
+
+  await emailService.sendRaw({ to, subject, html, text });
 }
 
 export async function listFeedback({ limit = 50, page = 1, status, category, search } = {}) {

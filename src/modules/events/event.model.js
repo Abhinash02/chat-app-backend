@@ -11,6 +11,22 @@ const eventSchema = new mongoose.Schema(
       index: true,
     },
     badgeText: { type: String, trim: true, maxlength: 30, default: 'HOT' },
+
+    /**
+     * Where this is published.
+     *
+     * The same row feeds the app's Events screen and the website's
+     * announcements, so one of them often wants something the other does not —
+     * a coin offer is for people who already have the app, a launch note is for
+     * people who do not. Defaults to `both`, which is what every row created
+     * before this field existed effectively was.
+     */
+    visibility: {
+      type: String,
+      enum: ['app', 'website', 'both'],
+      default: 'both',
+      index: true,
+    },
     bannerUrl: { type: String, default: null },
     targetGender: {
       type: String,

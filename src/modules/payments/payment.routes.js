@@ -20,8 +20,15 @@ import {
 
 const router = Router();
 
-// Public Cashfree browser return endpoint (Cashfree redirects here after checkout)
+/*
+ * Both gateways land the buyer here after checkout, as a plain browser
+ * navigation with no Authorization header — so these two sit above
+ * `authenticate` by necessity. Each one reads a single order id and asks the
+ * provider whether that session was paid; neither trusts the query string for
+ * anything more.
+ */
 router.get('/cashfree/return', paymentController.handleCashfreeReturn);
+router.get('/stripe/return', paymentController.handleStripeReturn);
 
 router.use(authenticate);
 
